@@ -36,12 +36,24 @@
      - Sequential dependencies (arrows)
      - Parallel paths (separate lines)
      - Convergence points (where paths rejoin)
-     Identify the critical path and parallelizable work. -->
+     Identify the critical path and parallelizable work.
+
+     Optional: annotate edges with the specific artifact that creates the dependency.
+     This granularity helps identify when milestones can start earlier than the
+     coarse ordering suggests (e.g., M3 only needs TodayView from M2, not all of M2). -->
 
 ```
 M1 ──► M2 ──┬──► M3
              │
              └──► M4
+```
+
+With dependency rationale (optional):
+
+```
+M1 ──► M2 [via: DataStore, CoreModels]
+       ├──► M3 [via: date navigation from TodayView]
+       ├──► M4 [via: searchActivities method]
 ```
 
 **Critical path:** M1 → M2 → ...

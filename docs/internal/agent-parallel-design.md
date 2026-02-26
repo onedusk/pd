@@ -26,7 +26,7 @@ The goal is to evolve the pipeline so that:
 ## 2. Assumptions & Constraints
 
 1. **Evolution, not replacement.** The agent-parallel system must be an upgrade path for the existing `/decompose` skill. Users who don't have A2A infrastructure get the current single-agent behavior unchanged.
-2. **A2A is the coordination protocol.** Google's Agent-to-Agent protocol (v0.3.0, donated to Linux Foundation) — HTTP + JSON-RPC 2.0, with SSE streaming and push notifications. No proprietary coordination layer.
+2. **A2A is the coordination protocol.** Google's Agent-to-Agent protocol (v0.3.0, launched under Linux Foundation governance (June 2025)) — HTTP + JSON-RPC 2.0, with SSE streaming and push notifications. No proprietary coordination layer.
 3. **MCP is the tool protocol.** Model Context Protocol is already adopted by Claude Code, Cursor, Windsurf, and OpenCode. Each specialist agent gets its capabilities through MCP tools.
 4. **Code intelligence is self-contained.** The system builds its own temporary knowledge graph per decomposition — it does not depend on GitNexus or any external service. It uses the same *methodology* (Tree-sitter parsing, graph-based dependency analysis) but owns its implementation.
 5. **Graceful degradation is mandatory.** If A2A agents aren't available → single-agent mode. If MCP tools aren't available → Claude's native capabilities. If code intelligence isn't available → file-reading heuristics (current behavior). No hard dependencies.
@@ -373,7 +373,7 @@ Named decompositions (`auth-system`, `payment-flow`) are completely independent 
 - **Decision:** Go.
 - **Rationale:**
   - **Single binary, trivial cross-compilation.** `GOOS=linux GOARCH=amd64 go build` — no runtime dependencies, no installer. Users download one binary and run it.
-  - **Official MCP Go SDK.** `github.com/modelcontextprotocol/go-sdk` — maintained in collaboration with Google, 3.9k stars, very active (commits from Feb 2026). Provides server + client APIs, stdio + StreamableHTTP transports, OAuth 2.0, JSON-RPC, tools, resources, prompts, and sampling. This is not a community wrapper — it's under the `modelcontextprotocol` GitHub org.
+  - **Official MCP Go SDK.** `github.com/modelcontextprotocol/go-sdk` — maintained in collaboration with Google, well-starred and actively maintained (commits from Feb 2026). Provides server + client APIs, stdio + StreamableHTTP transports, OAuth 2.0, JSON-RPC, tools, resources, prompts, and sampling. This is not a community wrapper — it's under the `modelcontextprotocol` GitHub org.
   - **Goroutines map directly to parallel agents.** Fan out N specialist agents, each in a goroutine, coordinate via channels. No async/await ceremony, no runtime overhead.
   - **A2A is HTTP + JSON-RPC 2.0.** Go's `net/http` stdlib handles this natively. No framework needed.
   - **Tree-sitter has solid Go bindings.** `go-tree-sitter` — not the official binding (that's Rust), but well-maintained and sufficient for AST extraction (we're parsing to extract symbols, not building an LSP).
@@ -417,7 +417,7 @@ Named decompositions (`auth-system`, `payment-flow`) are completely independent 
    No budget enforcement in v1. Agents run freely. Usage is tracked for observability (agents report token counts in A2A artifact metadata) but not capped. This avoids premature optimization — we need real-world data on per-stage costs before designing a budget system.
 
 5. **Merge strategy: section-based concatenation.**
-   Each parallel agent writes to a pre-assigned named section. The orchestrator concatenates sections in template order. No conflict is possible because sections are assigned before fan-out. No LLM merge pass needed — the template structure guarantees coherent output.
+   Each parallel agent writes to a pre-assigned named section. The orchestrator concatenates sections in template order. No conflict is possible because sections are assigned before fan-out. After section-based concatenation, the orchestrator runs a lightweight coherence check: it reads the merged output and flags potential contradictions between sections (e.g., a platform limitation discovered by one Research Agent instance that conflicts with an integration approach proposed by another). This is a focused cross-section consistency scan, not a full LLM re-generation pass. If contradictions are found, the orchestrator routes them back to the relevant agents as INPUT_REQUIRED tasks.
 
 6. **Tree-sitter tier-1 languages: Go, TypeScript, Python, Rust.**
    These four get full graph support (symbol extraction, call chains, dependency edges, cluster detection) and are tested in CI. All other Tree-sitter-supported languages get best-effort parsing — symbols and imports are extracted, but call chain accuracy is not guaranteed. Users can report quality issues for specific languages to promote them to tier-1.

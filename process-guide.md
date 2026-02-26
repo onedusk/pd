@@ -10,7 +10,7 @@ The methodology is deliberately sequential — you don't skip ahead. But it also
 
 ### Relationship to Spec-Driven Development
 
-This methodology is an implementation of [Spec-Driven Development](https://www.thoughtworks.com/en-us/radar/techniques/spec-driven-development) (SDD) — recognized by Thoughtworks' Technology Radar as one of 2025's key engineering practices. The SDD pattern, as identified across tools like GitHub Spec Kit, Amazon Kiro, and the BMAD Method, follows a core loop: **intent → spec → plan → execution**.
+This methodology is an implementation of [Spec-Driven Development](https://www.thoughtworks.com/en-us/radar/techniques/spec-driven-development) (SDD) — recognized as an emerging technique in Thoughtworks' Technology Radar (2025, Assess ring). The SDD pattern, as identified across tools like GitHub Spec Kit, Amazon Kiro, and the BMAD Method, follows a core loop: **intent → spec → plan → execution**.
 
 Progressive decomposition extends the emerging 3-stage SDD consensus with two additional stages:
 
@@ -171,7 +171,7 @@ Cover at minimum: persistence strategy, primary framework choice, data storage a
 
 **10. Product Decision Records (PDRs)**
 
-PDRs are the product-side counterpart to ADRs. Architecture Decision Records are well-established (Michael Nygard, 2011) and widely adopted — Thoughtworks, AWS, Azure, and Google Cloud all recommend them. But no standard format exists for *product* decisions, even though they are just as consequential and just as easily forgotten.
+PDRs are the product-side counterpart to ADRs. Architecture Decision Records are well-established (Michael Nygard, 2011) and widely adopted — Thoughtworks, AWS, Azure, and Google Cloud all recommend them. But no widely adopted standard exists for *product* decisions, though some practitioners have proposed formats (notably Valentin Lefebvre's Process Decision Record specification and enterprise-focused Product Decision Record templates). Product decisions are just as consequential as architectural ones and just as easily forgotten.
 
 A PDR uses the same structured format as an ADR, but captures *why the product behaves the way it does for users* rather than *how the system is built*:
 
@@ -259,7 +259,7 @@ Markdown reference documents derived from the code: entity-by-entity data model 
 
 ### Why Code Before Tasks
 
-This is the most distinctive stage in the pipeline, and the one most often skipped in other methodologies. The argument for it is simple: **prose is ambiguous in ways that code is not.**
+This is the most distinctive stage in the pipeline, and the one most often skipped in other methodologies. The argument for it is simple: **prose is ambiguous in ways that code is not.** Stage 2 specifically targets data model and interface contract ambiguities — the classes of ambiguity where type systems provide the clearest disambiguation. Architectural ambiguities (concurrency model, layer boundaries, dependency directions) are partially addressed by the architectural pattern choice in Stage 1 but are not formally verified until implementation.
 
 A design doc can say "Activity has an optional start time." Does that mean the field is nullable? Does it mean there's a default? Does it mean the field exists but can be an empty string? In a type definition, the answer is unambiguous: `startAt: Date?` — it's nullable, period.
 
@@ -339,6 +339,8 @@ M1 ──► M2 ──┬──► M3 (parallel with M4)
 
 Identify the **critical path** (longest sequential chain) and **parallelizable work**.
 
+Optionally, annotate dependency edges with the specific artifact (file, type, method) that creates the dependency. This makes the rationale explicit and directly feeds parallelization analysis — if M3 only depends on one output of M2, M3 can start as soon as that output is ready, not when all of M2 is done.
+
 **3. Target directory tree**
 
 Complete listing of every file that will be created, modified, or deleted, annotated with the milestone that touches it.
@@ -376,6 +378,14 @@ Conventions used in the task files: status markers, action types, ID format.
 - First milestone: foundation layer that everything else depends on
 - Last milestone: most experimental or optional feature
 - 5–12 milestones is typical. Fewer than 5 means decomposition is too coarse. More than 12 means milestones are too granular — merge related ones.
+
+### Cross-Cutting Concerns
+
+Some concerns (error handling, logging, analytics, accessibility, localization) span all milestones rather than fitting into one. Handle these by establishing patterns early:
+
+1. **Early milestone pattern establishment.** M1 should include the error handling utilities, logging infrastructure, or accessibility conventions that later milestones inherit.
+2. **Stage 0 codification.** Reference these patterns in Stage 0's development standards so they become implicit acceptance criteria for every task.
+3. **Mid-project emergence.** If a cross-cutting concern surfaces mid-project, add it to Stage 0 and propagate to unfinished milestones using the change propagation rules.
 
 **Template:** [`templates/stage-3-task-index.md`](templates/stage-3-task-index.md)
 **Example:** [`examples/stage-3-excerpt.md`](examples/stage-3-excerpt.md)
@@ -478,6 +488,12 @@ These are expected and healthy:
 
 **Do NOT iterate** on cosmetic improvements to the documents. They are disposable scaffolding — their value is in the thinking they forced, not in the documents themselves.
 
+### Convergence Heuristic
+
+If a feedback loop iteration reveals only **additive** changes (new fields, new helper methods, additional acceptance criteria) rather than **structural** changes (altered relationships, changed cardinality, reordered milestones, removed entities), the design is converging. Ship when two consecutive iterations produce only additive changes.
+
+If structural changes persist after three iterations, the design likely has a foundational ambiguity that should be resolved by revisiting assumptions (Stage 1, Section 1) rather than continuing to iterate at the current level.
+
 ### Living Specs: Handling Requirement Changes
 
 The pipeline described above covers the forward pass — going from idea to tasks. But requirements change mid-project. A new integration becomes necessary, a feature gets cut, a data model needs a new field. The staged structure makes impact analysis tractable because changes propagate in a predictable direction.
@@ -527,6 +543,15 @@ The mapping:
 - `CLAUDE.md` / `.cursorrules` ← Stage 0 + project-specific build commands
 - `docs/` ← Stages 1–4 (design pack, skeletons, task index, task specs)
 
+#### Task Granularity Recalibration
+
+AI agents have different performance profiles than human developers. They are faster at boilerplate and structural code, slower at tasks requiring runtime debugging or judgment calls about ambiguous requirements. They also have context windows — a task specification that fits in a human's working memory may exceed what an AI can hold alongside relevant skeleton code and design context.
+
+When writing tasks for AI execution, consider:
+- **Split complex-logic tasks** into smaller units (one decision per task)
+- **Merge boilerplate tasks** into larger batches (AI handles these efficiently)
+- **Watch context size** — if a task outline exceeds ~20 lines or references more than 3 cross-file dependencies, it may benefit from splitting
+
 ### For Teams
 
 | Stage | Owner | Process |
@@ -574,3 +599,21 @@ This methodology produces the artifacts you need for sprint planning (milestones
 
 **Q: Do I need to use all 5 stages?**
 Stage 0 is optional for solo work. For everything else, the minimum viable pass is: Stage 1 (data model + architecture + milestone list) → Stage 3 (progress table + dependency graph) → Stage 4 (task outlines). Skip Stage 2 only if your project has fewer than 3 entities and no API surface.
+
+---
+
+## Formal Foundations
+
+The pipeline maps to several established formalisms. This section is not required reading for practitioners — it grounds the methodology for academic evaluation and for anyone comparing it to formal methods.
+
+- **Stepwise refinement (Dijkstra, 1972; Wirth, 1971).** The stage sequence is a refinement chain: each stage produces a strictly more concrete representation than the previous. The pipeline refines a project idea into an executable task list, applying the same philosophy Dijkstra and Wirth applied to refining abstract programs into executable code.
+
+- **DAG scheduling (PERT/CPM).** The milestone dependency graph (Stage 3) and task dependency graph (Stage 4) are directed acyclic graphs. Critical path analysis, slack time computation, and optimal scheduling follow directly from the well-established PERT/CPM framework (1950s).
+
+- **Fixed-point iteration (Kleene/Tarski).** The feedback loops (Stage 2 → Stage 1, Stage 4 → Stage 2, etc.) are modeled as fixed-point computation over a lattice of specification states. Each iteration adds specificity without removing it (monotonicity). The convergence heuristic (additive-only changes) is an informal check for reaching the fixed point.
+
+- **MSO transductions (Courcelle).** The graph transformations from milestone DAG to task dependency graph are MSO (Monadic Second-Order) transductions. A key result: these transductions preserve decidability of graph properties on structures of bounded treewidth. Verification at the milestone level carries through to the task level — not just by convention, but by mathematical guarantee.
+
+- **Composition closure.** Staged decomposition inherits consistency preservation from the composition closure property of rational transductions. If each stage individually preserves consistency, the pipeline as a whole preserves it. This formally justifies why staged decomposition is structurally safer than single-step decomposition.
+
+The creative phases (Stages 1 and 2 — specification and skeleton writing) are outside the formalizable boundary. They require judgment, domain knowledge, and research. The pipeline does not attempt to formalize these; it structures the work around them so that their outputs can be verified by the algorithmic phases that follow.

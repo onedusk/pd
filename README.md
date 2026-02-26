@@ -28,10 +28,10 @@ Builders. Solo developers, small teams, and AI-assisted development workflows. I
 | Stage | Name | Input | Output | Frequency |
 |:-----:|------|-------|--------|-----------|
 | 0 | Development Standards | Team norms | Ground rules document | Once per org |
-| 1 | Design Pack | Project idea + research | Full specification | Once per project |
-| 2 | Implementation Skeletons | Design pack | Code-level starting points | Once per project |
-| 3 | Task Index | Design pack + skeletons | Master build plan | Once per project |
-| 4 | Task Specifications | Task index | Per-milestone executable tasks | Once per project |
+| 1 | Design Pack | Project idea + research | Full specification | Once (updated as requirements change) |
+| 2 | Implementation Skeletons | Design pack | Code-level starting points | Once (updated as requirements change) |
+| 3 | Task Index | Design pack + skeletons | Master build plan | Once (updated as requirements change) |
+| 4 | Task Specifications | Task index | Per-milestone executable tasks | Once (updated as requirements change) |
 
 ```
 Stage 0 (once)
@@ -60,7 +60,7 @@ Most SDD tools implement a 3-stage pipeline. Progressive Decomposition adds two 
 **Stages 0 and 2 are the differentiators:**
 
 - **Stage 0 (Development Standards)** grounds the project in verified platform versions, tooling baselines, and team norms — preventing hallucinated framework APIs and inconsistent conventions.
-- **Stage 2 (Implementation Skeletons)** forces the design into compilable type definitions *before* task planning begins. Schema definitions reveal ambiguities that prose descriptions hide. A field can't be both required and nullable in a type system — but it can be in a design doc.
+- **Stage 2 (Implementation Skeletons)** forces the design into compilable type definitions *before* task planning begins. Schema definitions reveal ambiguities that prose descriptions hide — specifically in data models and interface contracts, where type systems enforce unambiguous field types, nullability, and relationships. A field can't be both required and nullable in a type system — but it can be in a design doc.
 
 ## Quick Start
 
@@ -82,7 +82,7 @@ Most SDD tools implement a 3-stage pipeline. Progressive Decomposition adds two 
 
 ## On PDRs
 
-This methodology introduces **Product Decision Records (PDRs)** — a structured format for product decisions, parallel to the well-established Architecture Decision Record (ADR) format. ADRs capture *how* the system is built; PDRs capture *why* it behaves the way it does for users. Same structure (Status, Problem/Context, Decision, Rationale/Consequences), different domain. No standard PDR format exists in the literature — this is a gap worth filling, since product decisions are just as consequential as architectural ones and just as easily forgotten.
+This methodology introduces **Product Decision Records (PDRs)** — a structured format for product decisions, parallel to the well-established Architecture Decision Record (ADR) format. ADRs capture *how* the system is built; PDRs capture *why* it behaves the way it does for users. Same structure (Status, Problem/Context, Decision, Rationale/Consequences), different domain. No widely adopted standard for product decision records exists, though some practitioners have proposed formats. This methodology provides a structured PDR template inspired by the ADR pattern — because product decisions are just as consequential as architectural ones and just as easily forgotten.
 
 ## AGENTS.md Compatibility
 
