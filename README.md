@@ -4,7 +4,7 @@ A 5-stage spec-driven development pipeline for taking a software project from id
 
 Extends the emerging [Spec-Driven Development](https://www.thoughtworks.com/en-us/radar/techniques/spec-driven-development) (SDD) consensus with two additional stages that existing tools omit: **engineering-standards verification** and **pre-implementation type materialization** (code skeletons before task planning).
 
-Extracted from using in multiple large codebases using this approach. Generalized to work with any stack, any platform, and any team — human or AI-assisted. Example of large codebases could be `521 directories, 3198 files`
+Extracted from using in multiple medium-large codebases using this approach. Generalized to work with any stack, any platform, and any team — human or AI-assisted.
 
 ## Who This Is For
 
