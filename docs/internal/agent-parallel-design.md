@@ -396,29 +396,39 @@ Named decompositions (`auth-system`, `payment-flow`) are completely independent 
 
 ---
 
-## 7. Open Questions
+## 7. Resolved Questions
+
+> These were open questions during initial design. All have been decided.
 
 ### Architecture
 
-1. **Graph database choice.** KuzuDB (used by GitNexus, embedded, fast) vs. SQLite with graph extensions vs. in-memory adjacency lists. KuzuDB is the current leading candidate — embedded, no server, fast for local use.
+1. **Graph database: KuzuDB.**
+   Embedded, no server process, fast for local use, Cypher query language, C bindings via cgo. Used by GitNexus in production. Rejected SQLite (graph queries require recursive CTEs — awkward and slow for deep traversals) and in-memory adjacency lists (no query language, must build traversal from scratch).
 
-2. **Agent deployment model.** Are agents always local processes started by the orchestrator? Or can they be remote services? For v1, local-only simplifies everything. Remote capability could come later via A2A's built-in HTTP transport.
+2. **Agent deployment: local-only for v1.**
+   Orchestrator spawns agents as local goroutines or child processes. No networking config, no auth, no service discovery. Remote deployment can be added in v2 via A2A's built-in HTTP transport — the protocol already supports it, we just don't need it yet.
 
-3. **Orchestrator identity.** Does the `/decompose` skill *become* the orchestrator, or does it delegate to a separate orchestrator agent? If the skill is the orchestrator, it stays lean but must handle A2A client logic. If it delegates, there's an extra hop but cleaner separation.
+3. **Orchestrator identity: `/decompose` skill delegates to a Go binary.**
+   The skill stays lean (markdown + shell preprocessing). When invoked, it calls the Go orchestrator binary which owns all agent coordination, A2A communication, and MCP tool management. Clean separation — the skill is the UX layer, the binary is the engine. This also means the orchestrator works independently of Claude Code (could be invoked from any CI/CD pipeline, CLI, or other agent framework).
 
 ### Implementation
 
-4. **Token budget across agents.** Parallel agents each consume tokens independently. How to manage total cost? Possible approach: orchestrator sets a token budget per sub-task, agents report usage via A2A metadata.
+4. **Token budget: deferred to v2.**
+   No budget enforcement in v1. Agents run freely. Usage is tracked for observability (agents report token counts in A2A artifact metadata) but not capped. This avoids premature optimization — we need real-world data on per-stage costs before designing a budget system.
 
-5. **Merge conflicts.** When parallel agents produce outputs for the same document (e.g., two Research Agents writing different sections of Stage 1), how does the orchestrator merge? Possible approach: each agent writes to a named section, orchestrator concatenates in order.
+5. **Merge strategy: section-based concatenation.**
+   Each parallel agent writes to a pre-assigned named section. The orchestrator concatenates sections in template order. No conflict is possible because sections are assigned before fan-out. No LLM merge pass needed — the template structure guarantees coherent output.
 
-6. **Tree-sitter language support.** Tree-sitter has parsers for 100+ languages, but quality varies. Which languages are tier-1 (full support) vs. tier-2 (best-effort)?
+6. **Tree-sitter tier-1 languages: Go, TypeScript, Python, Rust.**
+   These four get full graph support (symbol extraction, call chains, dependency edges, cluster detection) and are tested in CI. All other Tree-sitter-supported languages get best-effort parsing — symbols and imports are extracted, but call chain accuracy is not guaranteed. Users can report quality issues for specific languages to promote them to tier-1.
 
 ### Product
 
-7. **User experience during parallel execution.** How does the user see progress? A2A supports streaming (SSE) — the orchestrator could stream status updates as agents complete their work.
+7. **Progress UX: milestone callbacks.**
+   The orchestrator reports when each agent completes its task. User sees checkpoint-level updates: "Platform research complete. Starting data model..." Not real-time streaming of every agent thought — that's too noisy. Keeps the UX informative without overwhelming.
 
-8. **When is the code graph worth building?** Small projects (< 20 files) probably don't benefit. What's the threshold? Possible heuristic: build the graph if the codebase has > 50 files or > 5k LOC.
+8. **Code graph: always build it.**
+   The graph is cheap to build (seconds with Tree-sitter for typical projects). No threshold logic — just always build it. Even small projects benefit from dependency detection. Eliminates a code path (threshold checking) and a class of bugs (threshold too high/low for specific projects).
 
 ---
 
