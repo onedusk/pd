@@ -31,6 +31,7 @@ The goal is to evolve the pipeline so that:
 4. **Code intelligence is self-contained.** The system builds its own temporary knowledge graph per decomposition — it does not depend on GitNexus or any external service. It uses the same *methodology* (Tree-sitter parsing, graph-based dependency analysis) but owns its implementation.
 5. **Graceful degradation is mandatory.** If A2A agents aren't available → single-agent mode. If MCP tools aren't available → Claude's native capabilities. If code intelligence isn't available → file-reading heuristics (current behavior). No hard dependencies.
 6. **No cloud infrastructure required.** Everything runs locally. Agents can be local processes, not remote services.
+7. **Go is the implementation language.** Single-binary distribution, trivial cross-compilation, official MCP Go SDK (Google-maintained), goroutines for agent parallelism. See ADR-005.
 
 ---
 
@@ -365,6 +366,34 @@ Named decompositions (`auth-system`, `payment-flow`) are completely independent 
   - (-) Must maintain two code paths (single-agent and multi-agent)
   - (-) Testing matrix increases (4 degradation levels)
 
+### ADR-005 — Go as implementation language
+
+- **Status:** Proposed
+- **Context:** The agent-parallel system needs a language that produces single-binary distributions, cross-compiles trivially, and has strong support for both A2A (HTTP + JSON-RPC + concurrent agents) and MCP. Candidates: Go, Rust, TypeScript, Python.
+- **Decision:** Go.
+- **Rationale:**
+  - **Single binary, trivial cross-compilation.** `GOOS=linux GOARCH=amd64 go build` — no runtime dependencies, no installer. Users download one binary and run it.
+  - **Official MCP Go SDK.** `github.com/modelcontextprotocol/go-sdk` — maintained in collaboration with Google, 3.9k stars, very active (commits from Feb 2026). Provides server + client APIs, stdio + StreamableHTTP transports, OAuth 2.0, JSON-RPC, tools, resources, prompts, and sampling. This is not a community wrapper — it's under the `modelcontextprotocol` GitHub org.
+  - **Goroutines map directly to parallel agents.** Fan out N specialist agents, each in a goroutine, coordinate via channels. No async/await ceremony, no runtime overhead.
+  - **A2A is HTTP + JSON-RPC 2.0.** Go's `net/http` stdlib handles this natively. No framework needed.
+  - **Tree-sitter has solid Go bindings.** `go-tree-sitter` — not the official binding (that's Rust), but well-maintained and sufficient for AST extraction (we're parsing to extract symbols, not building an LSP).
+  - **KuzuDB has Go bindings.** Embedded graph database with C FFI — works via cgo.
+  - **Contributor accessibility.** Simpler language than Rust, lower barrier to contribute and maintain.
+- **Consequences:**
+  - (+) Single binary distribution — `go install` or download from releases
+  - (+) Cross-platform in one command — macOS, Linux, Windows from any build host
+  - (+) Goroutines + channels are the natural concurrency model for agent orchestration
+  - (+) Official MCP SDK eliminates protocol implementation risk
+  - (+) Fast builds (seconds, not minutes)
+  - (-) Tree-sitter Go bindings are not first-class (Rust's are) — may lag on new grammars
+  - (-) cgo required for KuzuDB and Tree-sitter — complicates cross-compilation slightly (need C toolchain per target)
+  - (-) No official A2A Go SDK yet — must implement against the spec directly (HTTP + JSON-RPC, straightforward in Go)
+
+  **Alternatives rejected:**
+  - **Rust:** First-class Tree-sitter bindings, smaller binaries, no GC. But harder to write, slower builds, steeper contributor barrier. The workload is I/O-bound (HTTP, file parsing) — Rust's performance advantage doesn't apply.
+  - **TypeScript:** Tier 1 MCP SDK, large ecosystem. But requires Node.js runtime — no single binary. Distribution friction for a CLI tool.
+  - **Python:** Tier 1 MCP SDK, strongest AI ecosystem. But requires Python runtime, venv management, slow startup. Unacceptable for a CLI tool users install globally.
+
 ---
 
 ## 7. Open Questions
@@ -397,7 +426,7 @@ Named decompositions (`auth-system`, `payment-flow`) are completely independent 
 
 This document is a Stage 1 artifact. To continue the decomposition:
 
-1. **Stage 2 (Skeletons)** — Define the TypeScript/Python types for: Agent Card schemas, A2A message types for decomposition artifacts, MCP tool interfaces for code intelligence, graph schema (nodes + edges).
+1. **Stage 2 (Skeletons)** — Define Go types for: Agent Card schemas, A2A message types for decomposition artifacts, MCP tool interfaces for code intelligence, graph schema (nodes + edges).
 
 2. **Stage 3 (Task Index)** — Break the implementation into milestones:
    - M1: Code intelligence layer (Tree-sitter + graph)
