@@ -14,44 +14,76 @@ A 5-stage spec-driven development pipeline: **idea -> specs -> code shapes -> mi
 ## Project State
 
 Project: `!basename $(pwd)`
-Existing stages: `!ls docs/decompose/stage-*.md 2>/dev/null | sed 's/.*\//  /' || echo "  (none found)"`
-Task files: `!ls docs/decompose/tasks_m*.md 2>/dev/null | sed 's/.*\//  /' || echo "  (none found)"`
+Shared standards: `!ls docs/decompose/stage-0-development-standards.md 2>/dev/null | sed 's/.*\//  /' || echo "  (none)"`
+Decompositions: `!ls -d docs/decompose/*/ 2>/dev/null | sed 's|docs/decompose/||;s|/$||;s/^/  /' || echo "  (none)"`
+
+## Directory Structure
+
+```
+docs/decompose/
+  stage-0-development-standards.md          ← shared across all decompositions
+  <name>/                                   ← one directory per decomposition
+    stage-1-design-pack.md
+    stage-2-implementation-skeletons.md
+    stage-3-task-index.md
+    tasks_m01.md
+    tasks_m02.md
+    ...
+```
+
+Stage 0 lives at the root of `docs/decompose/` because it is written once per team/org. All other stages live inside a named subdirectory. Multiple decompositions can coexist.
 
 ## Pipeline Overview
 
-| Stage | Name | Output File | Prerequisites |
-|:-----:|------|-------------|---------------|
+| Stage | Name | Output Location | Prerequisites |
+|:-----:|------|-----------------|---------------|
 | 0 | Development Standards | `docs/decompose/stage-0-development-standards.md` | None |
-| 1 | Design Pack | `docs/decompose/stage-1-design-pack.md` | Stage 0 (recommended) |
-| 2 | Implementation Skeletons | `docs/decompose/stage-2-implementation-skeletons.md` | Stage 1 |
-| 3 | Task Index | `docs/decompose/stage-3-task-index.md` | Stages 1 + 2 |
-| 4 | Task Specifications | `docs/decompose/tasks_m01.md`, `tasks_m02.md`, ... | Stage 3 |
+| 1 | Design Pack | `docs/decompose/<name>/stage-1-design-pack.md` | Stage 0 (recommended) |
+| 2 | Implementation Skeletons | `docs/decompose/<name>/stage-2-implementation-skeletons.md` | Stage 1 |
+| 3 | Task Index | `docs/decompose/<name>/stage-3-task-index.md` | Stages 1 + 2 |
+| 4 | Task Specifications | `docs/decompose/<name>/tasks_m01.md`, `tasks_m02.md`, ... | Stage 3 |
+
+## Naming
+
+Every decomposition requires a name. Names use kebab-case: `auth-system`, `v2-redesign`, `calendar-import`.
+
+When a name is not provided in the arguments:
+
+1. Examine the project context — codebase, any description the user has given, the nature of the work.
+2. Suggest a short, descriptive kebab-case name (2-3 words).
+3. Ask the user to confirm or provide their own.
+
+Do not proceed past naming without a confirmed name.
 
 ## Argument Routing
 
 Arguments: $ARGUMENTS
 
-Route based on arguments:
+Parse arguments as: `/decompose [name] [stage|command]`
 
 | Argument | Action |
 |----------|--------|
-| *(empty)* | Detect current state from Project State above. Report which stages are complete and recommend the next stage to run. Ask the user if they want to proceed with the recommended stage. |
-| `0` | Run Stage 0 |
-| `1` | Run Stage 1 |
-| `2` | Run Stage 2 |
-| `3` | Run Stage 3 |
-| `4` | Run Stage 4 |
-| `status` | Report which stages exist and their completion state. Do not run any stage. |
-| `next` | Identify the first incomplete stage and run it. |
+| *(empty)* | List existing decompositions from Project State above. Offer to create a new one (suggest a name or ask for one). |
+| `0` | Run Stage 0 (shared, no name needed). |
+| `<name>` | Detect state for that decomposition, report progress, recommend next stage. |
+| `<name> 1` | Run Stage 1 for the named decomposition. |
+| `<name> 2` | Run Stage 2 for the named decomposition. |
+| `<name> 3` | Run Stage 3 for the named decomposition. |
+| `<name> 4` | Run Stage 4 for the named decomposition. |
+| `<name> status` | Report stage completion for that specific decomposition. |
+| `<name> next` | Run the next incomplete stage for that decomposition. |
+| `status` | Overview of ALL decompositions — list each with its completion state. |
+
+If a stage number (1-4) is provided without a name, ask the user which decomposition to run it against. If only one decomposition exists, confirm and use that one.
 
 ## General Workflow
 
 For every stage:
 
-1. **Check prerequisites** — verify that required earlier-stage files exist in `docs/decompose/`. If missing, inform the user and recommend running the prerequisite stage first.
+1. **Check prerequisites** — verify that required earlier-stage files exist. For Stages 1-4, check within `docs/decompose/<name>/`. For Stage 1, also check that Stage 0 exists at `docs/decompose/` (warn if missing, but don't block).
 2. **Read the template** — load the corresponding template from `assets/templates/` (relative to this skill's directory).
 3. **Explore and gather context** — for Stage 0, ask about team norms. For Stages 1+, explore the codebase, read existing docs, and ask the user about the project.
-4. **Produce the output** — write the completed stage file to `docs/decompose/`. Create the directory if it does not exist.
+4. **Produce the output** — write the completed stage file. Stage 0 goes to `docs/decompose/`. Stages 1-4 go to `docs/decompose/<name>/`. Create directories as needed.
 5. **Summarize** — tell the user what was produced, what key decisions were captured, and what the next stage expects as input.
 
 ## Stage-Specific Instructions
@@ -66,18 +98,18 @@ Workflow:
 1. Ask the user about their team's existing norms: code review process, testing expectations, change management, escalation rules.
 2. If an `AGENTS.md`, `CLAUDE.md`, or `.cursorrules` file exists in the project root, read it — it likely contains conventions to incorporate.
 3. Fill in the template with the user's norms. Keep it under 2 pages.
-4. This stage is optional for solo developers. If the user says "skip," note that Stage 0 was skipped and proceed to Stage 1.
+4. This stage is optional for solo developers. If the user says "skip," note that Stage 0 was skipped and proceed to ask which decomposition to start.
 
 **Done when:** The file exists and covers code change checklist, changeset format, escalation guidance, and testing guidance.
 
 ### Stage 1: Design Pack
 
 **Template:** `assets/templates/stage-1-design-pack.md`
-**Output:** `docs/decompose/stage-1-design-pack.md`
+**Output:** `docs/decompose/<name>/stage-1-design-pack.md`
 **Prerequisites:** Stage 0 (recommended but not required)
 
 Workflow:
-1. Ask the user to describe the project idea. What problem does it solve? Who is the user? What platform?
+1. Ask the user to describe the project idea or change. What problem does it solve? Who is the user? What platform?
 2. Research the target platform, frameworks, and key dependencies. Use web search to verify current versions and API surfaces.
 3. Work through each section of the template collaboratively:
    - Assumptions and constraints (ask the user)
@@ -101,11 +133,11 @@ Workflow:
 ### Stage 2: Implementation Skeletons
 
 **Template:** `assets/templates/stage-2-implementation-skeletons.md`
-**Output:** `docs/decompose/stage-2-implementation-skeletons.md`
-**Prerequisites:** Stage 1 must exist
+**Output:** `docs/decompose/<name>/stage-2-implementation-skeletons.md`
+**Prerequisites:** Stage 1 must exist in `docs/decompose/<name>/`
 
 Workflow:
-1. Read the Stage 1 design pack (`docs/decompose/stage-1-design-pack.md`).
+1. Read the Stage 1 design pack (`docs/decompose/<name>/stage-1-design-pack.md`).
 2. Translate the data model into compilable code in the target language. This is NOT pseudocode — it must parse/compile.
 3. Write interface contracts (request/response types) for any API surface described in Stage 1.
 4. Write documentation artifacts: entity reference, operation reference, example payloads.
@@ -116,8 +148,8 @@ Workflow:
 ### Stage 3: Task Index
 
 **Template:** `assets/templates/stage-3-task-index.md`
-**Output:** `docs/decompose/stage-3-task-index.md`
-**Prerequisites:** Stages 1 and 2 must exist
+**Output:** `docs/decompose/<name>/stage-3-task-index.md`
+**Prerequisites:** Stages 1 and 2 must exist in `docs/decompose/<name>/`
 
 Workflow:
 1. Read both the design pack and the skeletons.
@@ -133,11 +165,11 @@ Workflow:
 ### Stage 4: Task Specifications
 
 **Template:** `assets/templates/stage-4-task-specifications.md`
-**Output:** `docs/decompose/tasks_m01.md`, `tasks_m02.md`, ... (one file per milestone)
-**Prerequisites:** Stage 3 must exist
+**Output:** `docs/decompose/<name>/tasks_m01.md`, `tasks_m02.md`, ... (one file per milestone)
+**Prerequisites:** Stage 3 must exist in `docs/decompose/<name>/`
 
 Workflow:
-1. Read the task index (`docs/decompose/stage-3-task-index.md`).
+1. Read the task index (`docs/decompose/<name>/stage-3-task-index.md`).
 2. For each milestone, create a separate task file.
 3. For each task within a milestone:
    - Assign ID: `T-{milestone}.{sequence}` (e.g., T-01.03)
@@ -163,8 +195,10 @@ Load the reference when:
 
 ## Output Conventions
 
-- All output files go in `docs/decompose/` (create the directory if it does not exist)
+- Stage 0: `docs/decompose/stage-0-development-standards.md` (shared root)
+- Stages 1-4: `docs/decompose/<name>/` (named subdirectory)
 - Stage files: `stage-{N}-{name}.md`
 - Task files: `tasks_m{NN}.md` (two-digit milestone number)
 - Use the task ID format `T-{MM}.{SS}` consistently
 - File actions in task specs: CREATE, MODIFY, DELETE (uppercase)
+- Directory names: kebab-case, 2-3 words (e.g., `auth-system`, `v2-redesign`)
