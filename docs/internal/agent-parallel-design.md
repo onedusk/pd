@@ -3,6 +3,8 @@
 > Internal design document for the next evolution of Progressive Decomposition.
 > This serves as a Stage 1 Design Pack: architecture, decisions, and open questions
 > to be decomposed into Stages 2–4 in future sessions.
+> when decomposing, please reference the actual [A2A spec](../../../A2A/)
+> when decomposing, please use firecrawl skill to grab whats needed for MCP GO-sdk - https://github.com/modelcontextprotocol/go-sdk
 
 ---
 
