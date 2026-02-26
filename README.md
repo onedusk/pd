@@ -111,3 +111,21 @@ progressive-decomposition/
 ## License
 
 [PolyForm Shield 1.0.0](LICENSE.txt)
+
+---
+
+## Formal Foundations
+
+The pipeline maps to several established formalisms. This section is not required reading for practitioners — it grounds the methodology for academic evaluation and for anyone comparing it to formal methods.
+
+- **Stepwise refinement (Dijkstra, 1972; Wirth, 1971).** The stage sequence is a refinement chain: each stage produces a strictly more concrete representation than the previous. The pipeline refines a project idea into an executable task list, applying the same philosophy Dijkstra and Wirth applied to refining abstract programs into executable code.
+
+- **DAG scheduling (PERT/CPM).** The milestone dependency graph (Stage 3) and task dependency graph (Stage 4) are directed acyclic graphs. Critical path analysis, slack time computation, and optimal scheduling follow directly from the well-established PERT/CPM framework (1950s).
+
+- **Fixed-point iteration (Kleene/Tarski).** The feedback loops (Stage 2 → Stage 1, Stage 4 → Stage 2, etc.) are modeled as fixed-point computation over a lattice of specification states. Each iteration adds specificity without removing it (monotonicity). The convergence heuristic (additive-only changes) is an informal check for reaching the fixed point.
+
+- **MSO transductions (Courcelle).** The graph transformations from milestone DAG to task dependency graph are MSO (Monadic Second-Order) transductions. A key result: these transductions preserve decidability of graph properties on structures of bounded treewidth. Verification at the milestone level carries through to the task level — not just by convention, but by mathematical guarantee.
+
+- **Composition closure.** Staged decomposition inherits consistency preservation from the composition closure property of rational transductions. If each stage individually preserves consistency, the pipeline as a whole preserves it. This formally justifies why staged decomposition is structurally safer than single-step decomposition.
+
+The creative phases (Stages 1 and 2 — specification and skeleton writing) are outside the formalizable boundary. They require judgment, domain knowledge, and research. The pipeline does not attempt to formalize these; it structures the work around them so that their outputs can be verified by the algorithmic phases that follow.
