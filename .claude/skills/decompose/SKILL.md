@@ -76,24 +76,73 @@ Parse arguments as: `/decompose [name] [stage|command]`
 
 If a stage number (1-4) is provided without a name, ask the user which decomposition to run it against. If only one decomposition exists, confirm and use that one.
 
-## MCP Integration
+## MCP Integration (Primary Workflow)
 
-When the `decompose` MCP server is configured (via `decompose init`), three MCP tools become available:
+**IMPORTANT: When the `decompose` MCP server tools are available, you MUST use them. Do NOT manually read templates, do NOT manually write stage files, do NOT manually scan for stage completion. The MCP tools handle file I/O, validation, coherence checking, and code intelligence — use them.**
 
+### Available Tools
+
+#### Decomposition Tools
 | Tool | Purpose |
 |------|---------|
-| `run_stage` | Execute a pipeline stage (0-4) and return output file paths |
 | `get_status` | Check which stages are complete for a decomposition |
 | `list_decompositions` | List all decompositions with completion status |
+| `get_stage_context` | Get template, section names, and prerequisite content for a stage |
+| `write_stage` | Validate, merge, and write stage content (with coherence checking) |
+| `set_input` | Store a high-level input file/content to seed the pipeline |
+| `run_stage` | Execute a stage via the binary pipeline (produces scaffolds in basic mode) |
 
-When these tools are available, prefer using them for:
-- **`get_status`** instead of manually scanning for stage files
-- **`list_decompositions`** instead of manually listing directories
-- Stage execution still follows the General Workflow below — the MCP tools handle file I/O but you still guide the user through content decisions
+#### Code Intelligence Tools
+| Tool | Purpose |
+|------|---------|
+| `build_graph` | Index repository with tree-sitter — parse source files, extract symbols, build dependency graph, compute file clusters |
+| `query_symbols` | Search for functions, types, interfaces, classes by name. Filter by kind. |
+| `get_dependencies` | Traverse dependency graph upstream (what it depends on) or downstream (what depends on it) |
+| `assess_impact` | Compute blast radius of modifying files — direct and transitive dependents with risk score |
+| `get_clusters` | Get file clusters (groups of tightly connected files with cohesion scores) |
 
-If the MCP tools are not available, fall back to the manual file-based workflow described below.
+### MCP-First Stage Workflow
 
-## General Workflow
+For every stage when MCP tools are available:
+
+1. **Check status** — call `get_status` to verify prerequisites are complete.
+2. **Index the codebase** — call `build_graph` with the project root path (once per session; skip if already indexed). Exclude `node_modules`, `vendor`, `.git`, `dist`, `build`.
+3. **Get stage context** — call `get_stage_context` to load the template, section names, and content from prior stages.
+4. **Gather code intelligence** — call `query_symbols`, `get_dependencies`, `get_clusters`, `assess_impact` as needed for the current stage (see stage-specific instructions below).
+5. **Generate sections** — for each section name returned by `get_stage_context`, generate rich markdown content informed by the template structure and code intelligence data. You generate the content; the binary validates it.
+6. **Write stage** — call `write_stage` with all sections. The binary validates section order, runs coherence checking, merges, and writes the file. Review any coherence issues returned and fix if needed.
+7. **Summarize** — report what was produced, key decisions captured, and what comes next.
+
+### Stage-Specific Code Intelligence Usage
+
+**Stage 0 (Development Standards):**
+- No code intelligence needed. Ask about team norms, read CLAUDE.md/AGENTS.md if present.
+
+**Stage 1 (Design Pack):**
+- `build_graph` to index the target project.
+- `query_symbols` with `kind=type` to discover data model entities.
+- `query_symbols` with `kind=interface` to discover API contracts.
+- `get_clusters` to identify architectural boundaries for the architecture section.
+- `get_dependencies` on key files to understand integration points.
+- If `set_input` was called with an input file, its content appears in `get_stage_context` output — use it as the seed for the design.
+
+**Stage 2 (Implementation Skeletons):**
+- `query_symbols` to list all types, interfaces, and functions.
+- `get_dependencies` on data model files to verify relationship accuracy.
+- Compare skeleton types against discovered symbols for completeness.
+
+**Stage 3 (Task Index):**
+- `get_clusters` to inform milestone boundaries (each cluster = potential milestone).
+- `assess_impact` on files from Stage 2 to validate dependency ordering.
+- `get_dependencies` to build the ASCII dependency graph.
+
+**Stage 4 (Task Specifications):**
+- `assess_impact` per milestone to identify affected files.
+- `get_dependencies` per task file to set correct cross-task dependencies.
+
+## Manual Fallback Workflow
+
+**Only use this workflow if the MCP tools are NOT available** (no `decompose` server configured). If the tools are available, you MUST use the MCP-First Stage Workflow above.
 
 For every stage:
 
@@ -107,7 +156,6 @@ For every stage:
 
 ### Stage 0: Development Standards
 
-**Template:** `assets/templates/stage-0-development-standards.md`
 **Output:** `docs/decompose/stage-0-development-standards.md`
 **Prerequisites:** None
 
@@ -121,21 +169,20 @@ Workflow:
 
 ### Stage 1: Design Pack
 
-**Template:** `assets/templates/stage-1-design-pack.md`
 **Output:** `docs/decompose/<name>/stage-1-design-pack.md`
 **Prerequisites:** Stage 0 (recommended but not required)
 
 Workflow:
 1. Ask the user to describe the project idea or change. What problem does it solve? Who is the user? What platform?
-2. Research the target platform, frameworks, and key dependencies. Use web search to verify current versions and API surfaces.
+2. Research the target platform, frameworks, and key dependencies. Use code intelligence (`query_symbols`, `get_clusters`) and web search to verify current versions and API surfaces.
 3. Work through each section of the template collaboratively:
    - Assumptions and constraints (ask the user)
    - Platform and tooling baseline (research + verify)
-   - Data model (derive from features, validate with user)
-   - Architecture (propose pattern, explain trade-offs)
+   - Data model (derive from `query_symbols` + features, validate with user)
+   - Architecture (propose pattern informed by `get_clusters`, explain trade-offs)
    - UI/UX layout (if applicable — ask for screen inventory)
    - Features (scope with user — what's in v1, what's not)
-   - Integration points (if applicable)
+   - Integration points (use `get_dependencies` on key files)
    - Security and privacy plan
    - ADRs (minimum 3 — capture decisions as they're made during this stage)
    - PDRs (minimum 2 — capture product decisions)
@@ -149,12 +196,11 @@ Workflow:
 
 ### Stage 2: Implementation Skeletons
 
-**Template:** `assets/templates/stage-2-implementation-skeletons.md`
 **Output:** `docs/decompose/<name>/stage-2-implementation-skeletons.md`
-**Prerequisites:** Stage 1 must exist in `docs/decompose/<name>/`
+**Prerequisites:** Stage 1 must exist
 
 Workflow:
-1. Read the Stage 1 design pack (`docs/decompose/<name>/stage-1-design-pack.md`).
+1. Read Stage 1 from `get_stage_context` prerequisites (or read file directly in manual mode).
 2. Translate the data model into compilable code in the target language. This is NOT pseudocode — it must parse/compile.
 3. Write interface contracts (request/response types) for any API surface described in Stage 1.
 4. Write documentation artifacts: entity reference, operation reference, example payloads.
@@ -164,15 +210,14 @@ Workflow:
 
 ### Stage 3: Task Index
 
-**Template:** `assets/templates/stage-3-task-index.md`
 **Output:** `docs/decompose/<name>/stage-3-task-index.md`
-**Prerequisites:** Stages 1 and 2 must exist in `docs/decompose/<name>/`
+**Prerequisites:** Stages 1 and 2 must exist
 
 Workflow:
-1. Read both the design pack and the skeletons.
+1. Read both the design pack and the skeletons from prerequisites.
 2. Take the milestone list from Stage 1's implementation plan.
-3. For each milestone, enumerate every file that will be created, modified, or deleted.
-4. Draw an ASCII dependency graph showing which milestones depend on which others.
+3. For each milestone, enumerate every file that will be created, modified, or deleted. Use `assess_impact` to validate file lists.
+4. Draw an ASCII dependency graph showing which milestones depend on which others. Use `get_dependencies` for accuracy.
 5. Identify the critical path and parallelizable work.
 6. Count tasks per milestone (details come in Stage 4).
 7. Build the complete target directory tree with milestone annotations.
@@ -181,18 +226,17 @@ Workflow:
 
 ### Stage 4: Task Specifications
 
-**Template:** `assets/templates/stage-4-task-specifications.md`
 **Output:** `docs/decompose/<name>/tasks_m01.md`, `tasks_m02.md`, ... (one file per milestone)
-**Prerequisites:** Stage 3 must exist in `docs/decompose/<name>/`
+**Prerequisites:** Stage 3 must exist
 
 Workflow:
-1. Read the task index (`docs/decompose/<name>/stage-3-task-index.md`).
+1. Read the task index from prerequisites.
 2. For each milestone, create a separate task file.
 3. For each task within a milestone:
    - Assign ID: `T-{milestone}.{sequence}` (e.g., T-01.03)
    - Name the exact file path and action (CREATE / MODIFY / DELETE)
    - List dependencies (task IDs, not milestone numbers)
-   - Write a specific outline: name actual types, methods, and parameters
+   - Write a specific outline: name actual types, methods, and parameters. Use `query_symbols` and `get_dependencies` to verify references.
    - Write binary acceptance criteria (met or not met, no judgment calls)
 4. Order tasks within each milestone so dependencies come first.
 5. Each task should represent 15 minutes to 2 hours of work. Split larger tasks. Merge trivial ones.

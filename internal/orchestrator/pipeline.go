@@ -135,7 +135,7 @@ func (p *Pipeline) Execute(ctx context.Context, cfg Config, inputs []StageResult
 // ---------------------------------------------------------------------------
 
 func (p *Pipeline) executeFullMode(ctx context.Context, cfg Config, stage Stage, inputs []StageResult) (*StageResult, error) {
-	plan := mergePlanForStage(stage)
+	plan := MergePlanForStage(stage)
 
 	// Build the context message from predecessor inputs.
 	contextText := buildContextMessage(stage, inputs)
@@ -202,9 +202,9 @@ func (p *Pipeline) inferStage(inputs []StageResult) Stage {
 	return StageTaskSpecifications
 }
 
-// mergePlanForStage returns the MergePlan for the given stage. Stages without
+// MergePlanForStage returns the MergePlan for the given stage. Stages without
 // a multi-section plan return a single-section plan using the stage name.
-func mergePlanForStage(stage Stage) MergePlan {
+func MergePlanForStage(stage Stage) MergePlan {
 	switch stage {
 	case StageDesignPack:
 		return Stage1MergePlan

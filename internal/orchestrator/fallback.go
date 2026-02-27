@@ -37,7 +37,7 @@ func (f *FallbackExecutor) Execute(ctx context.Context, cfg Config, inputs []Sta
 
 // executeTemplate produces a template file with TODO markers for manual completion.
 func (f *FallbackExecutor) executeTemplate(_ context.Context, cfg Config, stage Stage, _ []StageResult) (*StageResult, error) {
-	plan := mergePlanForStage(stage)
+	plan := MergePlanForStage(stage)
 	sections := make([]Section, 0, len(plan.SectionOrder))
 
 	var sb strings.Builder
@@ -71,7 +71,7 @@ func (f *FallbackExecutor) executeTemplate(_ context.Context, cfg Config, stage 
 // Without agents, each section is generated with available context and a note
 // about MCP tool availability.
 func (f *FallbackExecutor) executeMCPOnly(_ context.Context, cfg Config, stage Stage, inputs []StageResult) (*StageResult, error) {
-	plan := mergePlanForStage(stage)
+	plan := MergePlanForStage(stage)
 	contextText := buildContextMessage(stage, inputs)
 	sections := make([]Section, 0, len(plan.SectionOrder))
 

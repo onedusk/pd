@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/dusk-indust/decompose/internal/a2a"
+	"github.com/dusk-indust/decompose/internal/graph"
 	"github.com/dusk-indust/decompose/internal/mcptools"
 	"github.com/dusk-indust/decompose/internal/orchestrator"
 )
@@ -18,6 +19,7 @@ import (
 type cliFlags struct {
 	ProjectRoot string
 	OutputDir   string
+	InputFile   string
 	Agents      string
 	SingleAgent bool
 	Verbose     bool
@@ -46,6 +48,7 @@ func run(args []string) error {
 	fs.BoolVar(&flags.SingleAgent, "single-agent", false, "force single-agent mode")
 	fs.BoolVar(&flags.Verbose, "verbose", false, "enable verbose output")
 	fs.BoolVar(&flags.ServeMCP, "serve-mcp", false, "run as MCP server for Claude Code integration")
+	fs.StringVar(&flags.InputFile, "input", "", "path to a high-level input file (idea, spec, or plan) to seed Stage 1")
 	fs.BoolVar(&flags.Force, "force", false, "overwrite existing files during init")
 	fs.BoolVar(&flags.Version, "version", false, "print version and exit")
 
@@ -72,19 +75,24 @@ func run(args []string) error {
 	client := a2a.NewHTTPClient()
 	ctx := context.Background()
 
-	// --serve-mcp: start MCP server on stdio.
+	// --serve-mcp: start unified MCP server on stdio with code intelligence.
 	if flags.ServeMCP {
 		cfg := orchestrator.Config{
 			ProjectRoot: projectRoot,
-			Capability:  orchestrator.CapBasic,
+			Capability:  orchestrator.CapMCPOnly,
 			SingleAgent: flags.SingleAgent,
 			Verbose:     flags.Verbose,
 		}
 		pipeline := orchestrator.NewPipeline(cfg, client)
 		defer pipeline.Close()
 
-		server := mcptools.NewDecomposeMCPServer(pipeline, cfg)
-		return mcptools.RunDecomposeMCPServerStdio(ctx, server)
+		// Create code intelligence service with in-memory graph store + tree-sitter.
+		store := graph.NewMemStore()
+		parser := graph.NewTreeSitterParser()
+		codeintel := mcptools.NewCodeIntelService(store, parser)
+
+		server := mcptools.NewUnifiedMCPServer(pipeline, cfg, codeintel)
+		return mcptools.RunUnifiedMCPServerStdio(ctx, server)
 	}
 
 	// Handle subcommands.
@@ -135,6 +143,7 @@ func run(args []string) error {
 		Name:           name,
 		ProjectRoot:    projectRoot,
 		OutputDir:      outputDir,
+		InputFile:      flags.InputFile,
 		Capability:     cap,
 		AgentEndpoints: agentEndpoints,
 		SingleAgent:    flags.SingleAgent,
