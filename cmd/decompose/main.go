@@ -1,9 +1,16 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/dusk-indust/decompose/internal/a2a"
+	"github.com/dusk-indust/decompose/internal/orchestrator"
 )
 
 // CLI flags parsed from command line.
@@ -48,7 +55,113 @@ func run(args []string) error {
 		return nil
 	}
 
-	// Orchestrator wiring will be implemented in M6.
-	_ = flags
-	return nil
+	// --serve-mcp: start MCP server (stub for now).
+	if flags.ServeMCP {
+		// MCP server wiring will be added in a future milestone.
+		return nil
+	}
+
+	// Positional args: [name] [stage]
+	positional := fs.Args()
+	if len(positional) < 1 {
+		return fmt.Errorf("usage: decompose [flags] <name> [stage]")
+	}
+	name := positional[0]
+
+	// Build Config from flags.
+	projectRoot := flags.ProjectRoot
+	if !filepath.IsAbs(projectRoot) {
+		abs, err := filepath.Abs(projectRoot)
+		if err != nil {
+			return fmt.Errorf("resolving project root: %w", err)
+		}
+		projectRoot = abs
+	}
+
+	outputDir := flags.OutputDir
+	if outputDir == "" {
+		outputDir = filepath.Join(projectRoot, "docs", "decompose", name)
+	}
+
+	// Determine capability level based on flags.
+	cap := orchestrator.CapBasic
+	var agentEndpoints []string
+	if flags.Agents != "" {
+		agentEndpoints = strings.Split(flags.Agents, ",")
+		for i := range agentEndpoints {
+			agentEndpoints[i] = strings.TrimSpace(agentEndpoints[i])
+		}
+		if len(agentEndpoints) > 0 {
+			cap = orchestrator.CapA2AMCP
+		}
+	}
+	if flags.SingleAgent {
+		cap = orchestrator.CapBasic
+	}
+
+	cfg := orchestrator.Config{
+		Name:           name,
+		ProjectRoot:    projectRoot,
+		OutputDir:      outputDir,
+		Capability:     cap,
+		AgentEndpoints: agentEndpoints,
+		SingleAgent:    flags.SingleAgent,
+		Verbose:        flags.Verbose,
+	}
+
+	// Create A2A HTTP client and pipeline.
+	client := a2a.NewHTTPClient()
+	pipeline := orchestrator.NewPipeline(cfg, client)
+
+	ctx := context.Background()
+
+	// Drain progress events to stderr in a background goroutine.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for ev := range pipeline.Progress() {
+			fmt.Fprintln(os.Stderr, orchestrator.FormatProgress(ev))
+		}
+	}()
+
+	// Determine whether to run a single stage or the full pipeline.
+	var runErr error
+	if len(positional) >= 2 {
+		stageNum, err := strconv.Atoi(positional[1])
+		if err != nil {
+			pipeline.Close()
+			<-done
+			return fmt.Errorf("invalid stage number %q: %w", positional[1], err)
+		}
+		if stageNum < 0 || stageNum > 4 {
+			pipeline.Close()
+			<-done
+			return fmt.Errorf("stage must be 0-4, got %d", stageNum)
+		}
+		result, err := pipeline.RunStage(ctx, orchestrator.Stage(stageNum))
+		if err != nil {
+			runErr = err
+		} else {
+			for _, p := range result.FilePaths {
+				fmt.Println(p)
+			}
+		}
+	} else {
+		results, err := pipeline.RunPipeline(ctx, orchestrator.StageDevelopmentStandards, orchestrator.StageTaskSpecifications)
+		if err != nil {
+			runErr = err
+		} else {
+			for _, r := range results {
+				for _, p := range r.FilePaths {
+					fmt.Println(p)
+				}
+			}
+		}
+	}
+
+	// Close progress channel and wait for the drain goroutine.
+	pipeline.Close()
+	<-done
+
+	return runErr
 }
