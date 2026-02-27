@@ -27,8 +27,8 @@ func TestCheckCoherence_ConflictingVersions_OneIssue(t *testing.T) {
 	issues, err := CheckCoherence(sections)
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
-	assert.Equal(t, "architecture", issues[0].SectionA)
-	assert.Equal(t, "features", issues[0].SectionB)
+	secs := []string{issues[0].SectionA, issues[0].SectionB}
+	assert.ElementsMatch(t, []string{"architecture", "features"}, secs)
 	assert.Contains(t, issues[0].Description, "react",
 		"description should mention the conflicting dependency")
 }

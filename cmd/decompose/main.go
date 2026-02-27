@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/dusk-indust/decompose/internal/a2a"
+	"github.com/dusk-indust/decompose/internal/mcptools"
 	"github.com/dusk-indust/decompose/internal/orchestrator"
 )
 
@@ -55,20 +56,7 @@ func run(args []string) error {
 		return nil
 	}
 
-	// --serve-mcp: start MCP server (stub for now).
-	if flags.ServeMCP {
-		// MCP server wiring will be added in a future milestone.
-		return nil
-	}
-
-	// Positional args: [name] [stage]
-	positional := fs.Args()
-	if len(positional) < 1 {
-		return fmt.Errorf("usage: decompose [flags] <name> [stage]")
-	}
-	name := positional[0]
-
-	// Build Config from flags.
+	// Build Config from flags (project root needed for both MCP and CLI modes).
 	projectRoot := flags.ProjectRoot
 	if !filepath.IsAbs(projectRoot) {
 		abs, err := filepath.Abs(projectRoot)
@@ -78,12 +66,38 @@ func run(args []string) error {
 		projectRoot = abs
 	}
 
+	// Create A2A HTTP client (used for both detection and pipeline).
+	client := a2a.NewHTTPClient()
+	ctx := context.Background()
+
+	// --serve-mcp: start MCP server on stdio.
+	if flags.ServeMCP {
+		cfg := orchestrator.Config{
+			ProjectRoot: projectRoot,
+			Capability:  orchestrator.CapBasic,
+			SingleAgent: flags.SingleAgent,
+			Verbose:     flags.Verbose,
+		}
+		pipeline := orchestrator.NewPipeline(cfg, client)
+		defer pipeline.Close()
+
+		server := mcptools.NewDecomposeMCPServer(pipeline, cfg)
+		return mcptools.RunDecomposeMCPServerStdio(ctx, server)
+	}
+
+	// Positional args: [name] [stage]
+	positional := fs.Args()
+	if len(positional) < 1 {
+		return fmt.Errorf("usage: decompose [flags] <name> [stage]")
+	}
+	name := positional[0]
+
 	outputDir := flags.OutputDir
 	if outputDir == "" {
 		outputDir = filepath.Join(projectRoot, "docs", "decompose", name)
 	}
 
-	// Determine capability level based on flags.
+	// Determine capability level: use explicit --agents flag or auto-detect.
 	cap := orchestrator.CapBasic
 	var agentEndpoints []string
 	if flags.Agents != "" {
@@ -93,6 +107,17 @@ func run(args []string) error {
 		}
 		if len(agentEndpoints) > 0 {
 			cap = orchestrator.CapA2AMCP
+		}
+	} else if !flags.SingleAgent {
+		// Auto-detect capabilities.
+		detector := orchestrator.NewDefaultDetector(client, flags.SingleAgent)
+		detectedCap, detectedAgents, err := detector.Detect(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: capability detection failed: %v\n", err)
+		} else {
+			cap = detectedCap
+			agentEndpoints = detectedAgents
+			fmt.Fprintf(os.Stderr, "Detected capability: %s\n", cap)
 		}
 	}
 	if flags.SingleAgent {
@@ -109,11 +134,8 @@ func run(args []string) error {
 		Verbose:        flags.Verbose,
 	}
 
-	// Create A2A HTTP client and pipeline.
-	client := a2a.NewHTTPClient()
+	// Create pipeline.
 	pipeline := orchestrator.NewPipeline(cfg, client)
-
-	ctx := context.Background()
 
 	// Drain progress events to stderr in a background goroutine.
 	done := make(chan struct{})

@@ -112,17 +112,21 @@ func (p *Pipeline) Close() {
 // based on the configuration capability level.
 func (p *Pipeline) Execute(ctx context.Context, cfg Config, inputs []StageResult) (*StageResult, error) {
 	// Determine the current stage from the router's perspective.
-	// The stage is derived from the number of completed inputs + prerequisite
-	// depth, but in practice the Router passes the correct cfg and we infer
-	// the stage from the input count. A more reliable approach: we inspect
-	// what stage is NOT yet in the inputs.
 	stage := p.inferStage(inputs)
 
-	switch {
-	case cfg.Capability >= CapA2AMCP && !cfg.SingleAgent:
+	switch cfg.Capability {
+	case CapFull, CapA2AMCP:
+		if cfg.SingleAgent {
+			fb := NewFallbackExecutor(CapBasic)
+			return fb.Execute(ctx, cfg, inputs)
+		}
 		return p.executeFullMode(ctx, cfg, stage, inputs)
+	case CapMCPOnly:
+		fb := NewFallbackExecutor(CapMCPOnly)
+		return fb.Execute(ctx, cfg, inputs)
 	default:
-		return p.executeBasicMode(ctx, cfg, stage, inputs)
+		fb := NewFallbackExecutor(CapBasic)
+		return fb.Execute(ctx, cfg, inputs)
 	}
 }
 
@@ -174,36 +178,6 @@ func (p *Pipeline) executeFullMode(ctx context.Context, cfg Config, stage Stage,
 		Stage:     stage,
 		FilePaths: []string{outPath},
 		Sections:  sections,
-	}, nil
-}
-
-// ---------------------------------------------------------------------------
-// Basic / fallback mode (single section, local execution)
-// ---------------------------------------------------------------------------
-
-func (p *Pipeline) executeBasicMode(ctx context.Context, cfg Config, stage Stage, inputs []StageResult) (*StageResult, error) {
-	// In basic mode, produce a single section from the combined inputs.
-	content := buildContextMessage(stage, inputs)
-	if content == "" {
-		content = fmt.Sprintf("# Stage %d: %s\n\n(placeholder - run with full capability for agent-generated content)\n",
-			int(stage), stage.String())
-	}
-
-	section := Section{
-		Name:    stage.String(),
-		Content: content,
-		Agent:   "local",
-	}
-
-	outPath := stageOutputPath(cfg, stage)
-	if err := writeOutputFile(outPath, content); err != nil {
-		return nil, fmt.Errorf("pipeline: write output for stage %d (%s): %w", stage, stage, err)
-	}
-
-	return &StageResult{
-		Stage:     stage,
-		FilePaths: []string{outPath},
-		Sections:  []Section{section},
 	}, nil
 }
 

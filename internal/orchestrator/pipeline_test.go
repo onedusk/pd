@@ -73,7 +73,7 @@ func TestPipeline_BasicMode_RunStage(t *testing.T) {
 
 	// Sections should be populated.
 	require.NotEmpty(t, result.Sections)
-	assert.Equal(t, "local", result.Sections[0].Agent)
+	assert.Equal(t, "template", result.Sections[0].Agent)
 }
 
 // TestPipeline_BasicMode_RunPipeline runs stages 0-1 sequentially in basic
