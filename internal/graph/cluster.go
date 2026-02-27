@@ -66,32 +66,26 @@ func ComputeClusters(ctx context.Context, store Store, files []FileNode) ([]Clus
 }
 
 // buildAdjacency constructs a bidirectional adjacency list from IMPORTS edges
-// by querying downstream dependencies for each file (depth 1).
+// using a single pass over all edges (O(E) instead of O(N*E)).
 func buildAdjacency(ctx context.Context, store Store, files []FileNode) map[string]map[string]bool {
 	adj := make(map[string]map[string]bool, len(files))
 	for _, f := range files {
-		if adj[f.Path] == nil {
-			adj[f.Path] = make(map[string]bool)
-		}
+		adj[f.Path] = make(map[string]bool)
 	}
 
-	// Query each file's downstream (depth 1) to discover IMPORTS edges.
-	// This relies on GetDependencies returning all edge types; we filter to IMPORTS
-	// by checking if the target is a known file path.
-	for _, f := range files {
-		chains, err := store.GetDependencies(ctx, f.Path, DirectionDownstream, 1)
-		if err != nil {
+	// Single pass: retrieve all edges and filter to IMPORTS between known files.
+	edges, err := store.GetAllEdges(ctx)
+	if err != nil {
+		return adj
+	}
+	for _, e := range edges {
+		if e.Kind != EdgeKindImports {
 			continue
 		}
-		for _, chain := range chains {
-			if len(chain.Nodes) == 2 {
-				target := chain.Nodes[1]
-				// Only include edges between known files.
-				if adj[target] != nil {
-					adj[f.Path][target] = true
-					adj[target][f.Path] = true
-				}
-			}
+		// Only include edges between known files.
+		if adj[e.SourceID] != nil && adj[e.TargetID] != nil {
+			adj[e.SourceID][e.TargetID] = true
+			adj[e.TargetID][e.SourceID] = true
 		}
 	}
 
@@ -167,12 +161,13 @@ func longestCommonPrefix(paths []string) string {
 	prefix := paths[0]
 	for _, p := range paths[1:] {
 		for !strings.HasPrefix(p, prefix) {
-			// Trim to the last path separator.
-			idx := strings.LastIndex(prefix, "/")
+			// Trim to the last path separator (excluding any trailing slash).
+			trimmed := strings.TrimRight(prefix, "/")
+			idx := strings.LastIndex(trimmed, "/")
 			if idx < 0 {
 				return ""
 			}
-			prefix = prefix[:idx+1] // keep the trailing slash
+			prefix = trimmed[:idx+1] // keep the trailing slash
 			if prefix == "/" || prefix == "" {
 				return prefix
 			}

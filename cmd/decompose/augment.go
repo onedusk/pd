@@ -53,29 +53,31 @@ func runAugment(projectRoot, pattern string) error {
 	}
 
 	// Get dependencies for the first matching symbol's file.
+	// Downstream = follow imports from this file = what this file depends on.
+	// Upstream = reverse imports = who imports this file.
 	primaryFile := symbols[0].FilePath
-	upstream, err := store.GetDependencies(ctx, primaryFile, graph.DirectionUpstream, 2)
-	if err == nil && len(upstream) > 0 {
-		sb.WriteString(fmt.Sprintf("\n**Dependencies (upstream from `%s`):**\n", primaryFile))
-		for _, chain := range upstream {
+	deps, err := store.GetDependencies(ctx, primaryFile, graph.DirectionDownstream, 2)
+	if err == nil && len(deps) > 0 {
+		sb.WriteString(fmt.Sprintf("\n**Dependencies (imports from `%s`):**\n", primaryFile))
+		for _, chain := range deps {
 			if len(chain.Nodes) > 1 {
 				sb.WriteString(fmt.Sprintf("- `%s`\n", chain.Nodes[len(chain.Nodes)-1]))
 			}
 		}
 	}
 
-	downstream, err := store.GetDependencies(ctx, primaryFile, graph.DirectionDownstream, 2)
-	if err == nil && len(downstream) > 0 {
-		sb.WriteString(fmt.Sprintf("\n**Dependents (downstream — %d files use `%s`):**\n", len(downstream), primaryFile))
+	dependents, err := store.GetDependencies(ctx, primaryFile, graph.DirectionUpstream, 2)
+	if err == nil && len(dependents) > 0 {
+		sb.WriteString(fmt.Sprintf("\n**Dependents (%d files import `%s`):**\n", len(dependents), primaryFile))
 		shown := 0
-		for _, chain := range downstream {
+		for _, chain := range dependents {
 			if len(chain.Nodes) > 1 && shown < 8 {
 				sb.WriteString(fmt.Sprintf("- `%s`\n", chain.Nodes[len(chain.Nodes)-1]))
 				shown++
 			}
 		}
-		if len(downstream) > 8 {
-			sb.WriteString(fmt.Sprintf("- ... (%d more)\n", len(downstream)-8))
+		if len(dependents) > 8 {
+			sb.WriteString(fmt.Sprintf("- ... (%d more)\n", len(dependents)-8))
 		}
 	}
 

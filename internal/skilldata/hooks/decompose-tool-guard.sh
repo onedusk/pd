@@ -2,6 +2,11 @@
 # Hook: augments built-in file tools with graph context from the decompose
 # code intelligence database. Follows the GitNexus augmentation pattern —
 # tools are never blocked, only enriched with additional context.
+#
+# All stderr is silenced to prevent Claude Code from reporting "hook error"
+# on benign warnings from jq, timeout, or KuzuDB.
+
+exec 2>/dev/null
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name')
@@ -69,7 +74,7 @@ if [[ -z "$PATTERN" ]] || [[ ${#PATTERN} -lt 3 ]]; then
 fi
 
 # Query the graph (5s timeout)
-GRAPH_CONTEXT=$(timeout 5 "$DECOMPOSE_BIN" --project-root "$PROJECT_ROOT" augment "$PATTERN" 2>/dev/null)
+GRAPH_CONTEXT=$(timeout 5 "$DECOMPOSE_BIN" --project-root "$PROJECT_ROOT" augment "$PATTERN")
 
 if [[ -z "$GRAPH_CONTEXT" ]]; then
   exit 0  # No graph results, allow tool without augmentation

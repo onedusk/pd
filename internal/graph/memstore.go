@@ -251,6 +251,15 @@ func (m *MemStore) GetClusters(_ context.Context) ([]ClusterNode, error) {
 	return out, nil
 }
 
+// GetAllEdges returns a copy of all edges in the store.
+func (m *MemStore) GetAllEdges(_ context.Context) ([]Edge, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]Edge, len(m.edges))
+	copy(out, m.edges)
+	return out, nil
+}
+
 // Stats returns counts of all node and edge types in the graph.
 func (m *MemStore) Stats(_ context.Context) (*GraphStats, error) {
 	m.mu.RLock()
