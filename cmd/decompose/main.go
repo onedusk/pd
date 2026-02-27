@@ -22,6 +22,7 @@ type cliFlags struct {
 	SingleAgent bool
 	Verbose     bool
 	ServeMCP    bool
+	Force       bool
 	Version     bool
 }
 
@@ -45,6 +46,7 @@ func run(args []string) error {
 	fs.BoolVar(&flags.SingleAgent, "single-agent", false, "force single-agent mode")
 	fs.BoolVar(&flags.Verbose, "verbose", false, "enable verbose output")
 	fs.BoolVar(&flags.ServeMCP, "serve-mcp", false, "run as MCP server for Claude Code integration")
+	fs.BoolVar(&flags.Force, "force", false, "overwrite existing files during init")
 	fs.BoolVar(&flags.Version, "version", false, "print version and exit")
 
 	if err := fs.Parse(args); err != nil {
@@ -85,10 +87,15 @@ func run(args []string) error {
 		return mcptools.RunDecomposeMCPServerStdio(ctx, server)
 	}
 
-	// Positional args: [name] [stage]
+	// Handle subcommands.
 	positional := fs.Args()
+	if len(positional) > 0 && positional[0] == "init" {
+		return runInit(projectRoot, flags.Force)
+	}
+
+	// Positional args: [name] [stage]
 	if len(positional) < 1 {
-		return fmt.Errorf("usage: decompose [flags] <name> [stage]")
+		return fmt.Errorf("usage: decompose [flags] <name|init> [stage]")
 	}
 	name := positional[0]
 

@@ -76,6 +76,23 @@ Parse arguments as: `/decompose [name] [stage|command]`
 
 If a stage number (1-4) is provided without a name, ask the user which decomposition to run it against. If only one decomposition exists, confirm and use that one.
 
+## MCP Integration
+
+When the `decompose` MCP server is configured (via `decompose init`), three MCP tools become available:
+
+| Tool | Purpose |
+|------|---------|
+| `run_stage` | Execute a pipeline stage (0-4) and return output file paths |
+| `get_status` | Check which stages are complete for a decomposition |
+| `list_decompositions` | List all decompositions with completion status |
+
+When these tools are available, prefer using them for:
+- **`get_status`** instead of manually scanning for stage files
+- **`list_decompositions`** instead of manually listing directories
+- Stage execution still follows the General Workflow below — the MCP tools handle file I/O but you still guide the user through content decisions
+
+If the MCP tools are not available, fall back to the manual file-based workflow described below.
+
 ## General Workflow
 
 For every stage:
