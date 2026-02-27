@@ -14,13 +14,19 @@ import (
 
 // CodeIntelService holds the graph store and parser used by MCP tool handlers.
 type CodeIntelService struct {
-	store  graph.Store
-	parser graph.Parser
+	store       graph.Store
+	parser      graph.Parser
+	projectRoot string // used for persisting the graph to disk
 }
 
 // NewCodeIntelService creates a CodeIntelService with the given store and parser.
 func NewCodeIntelService(store graph.Store, parser graph.Parser) *CodeIntelService {
 	return &CodeIntelService{store: store, parser: parser}
+}
+
+// SetProjectRoot sets the project root used for graph persistence.
+func (s *CodeIntelService) SetProjectRoot(root string) {
+	s.projectRoot = root
 }
 
 // extToLanguage maps file extensions to graph.Language.
@@ -141,7 +147,61 @@ func (s *CodeIntelService) BuildGraph(
 		return nil, BuildGraphOutput{}, fmt.Errorf("stats: %w", err)
 	}
 
+	// Persist graph to disk for the augment hook.
+	if s.projectRoot != "" {
+		persistPath := filepath.Join(s.projectRoot, ".decompose", "graph")
+		if err := persistGraph(ctx, s.store, persistPath, files); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to persist graph: %v\n", err)
+		}
+	}
+
 	return nil, BuildGraphOutput{Stats: *stats}, nil
+}
+
+// persistGraph copies graph data from the in-memory store to a file-based
+// KuzuDB at persistPath. This enables the `augment` CLI command to query
+// the graph without needing the MCP server running.
+func persistGraph(ctx context.Context, src graph.Store, persistPath string, files []graph.FileNode) error {
+	// Remove old graph to avoid stale data.
+	os.RemoveAll(persistPath)
+
+	dst, err := graph.NewKuzuFileStore(persistPath)
+	if err != nil {
+		return fmt.Errorf("open file store: %w", err)
+	}
+	defer dst.Close()
+
+	if err := dst.InitSchema(ctx); err != nil {
+		return fmt.Errorf("init schema: %w", err)
+	}
+
+	for _, f := range files {
+		if err := dst.AddFile(ctx, f); err != nil {
+			return fmt.Errorf("add file %s: %w", f.Path, err)
+		}
+	}
+
+	symbols, err := src.QuerySymbols(ctx, "", 100000)
+	if err != nil {
+		return fmt.Errorf("query symbols: %w", err)
+	}
+	for _, sym := range symbols {
+		if err := dst.AddSymbol(ctx, sym); err != nil {
+			return fmt.Errorf("add symbol %s: %w", sym.Name, err)
+		}
+	}
+
+	clusters, err := src.GetClusters(ctx)
+	if err != nil {
+		return fmt.Errorf("get clusters: %w", err)
+	}
+	for _, c := range clusters {
+		if err := dst.AddCluster(ctx, c); err != nil {
+			return fmt.Errorf("add cluster %s: %w", c.Name, err)
+		}
+	}
+
+	return nil
 }
 
 // QuerySymbols searches for symbols by name substring match.

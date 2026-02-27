@@ -90,6 +90,7 @@ func run(args []string) error {
 		store := graph.NewMemStore()
 		parser := graph.NewTreeSitterParser()
 		codeintel := mcptools.NewCodeIntelService(store, parser)
+		codeintel.SetProjectRoot(projectRoot)
 
 		server := mcptools.NewUnifiedMCPServer(pipeline, cfg, codeintel)
 		return mcptools.RunUnifiedMCPServerStdio(ctx, server)
@@ -99,6 +100,13 @@ func run(args []string) error {
 	positional := fs.Args()
 	if len(positional) > 0 && positional[0] == "init" {
 		return runInit(projectRoot, flags.Force)
+	}
+	if len(positional) > 0 && positional[0] == "augment" {
+		pattern := ""
+		if len(positional) > 1 {
+			pattern = strings.Join(positional[1:], " ")
+		}
+		return runAugment(projectRoot, pattern)
 	}
 
 	// Positional args: [name] [stage]

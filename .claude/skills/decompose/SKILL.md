@@ -5,11 +5,19 @@ description: |
   This skill should be used when a user wants to decompose a project idea into an executable
   implementation plan, restructure an existing project, or run any stage of the pipeline:
   dev standards, design pack, code skeletons, task index, or task specifications.
+hooks:
+  PreToolUse:
+    - matcher: "Read|Write|Edit|Glob|Grep"
+      hooks:
+        - type: command
+          command: ".claude/hooks/decompose-tool-guard.sh"
 ---
 
 # Progressive Decomposition
 
 A 5-stage spec-driven development pipeline: **idea -> specs -> code shapes -> milestone plan -> task specs**.
+
+> **CRITICAL — MCP TOOLS REQUIRED:** This skill has a `decompose` MCP server. Before doing ANYTHING, check if the MCP tools are available by calling `get_status`. If the tool call succeeds, you MUST use MCP tools for ALL operations: `get_status` (not Grep/Glob for files), `build_graph` (not manual Read), `get_stage_context` (not reading templates), `write_stage` (not the Write tool). Do NOT fall back to manual file operations when MCP tools are available. See the "MCP Integration" section below for the full tool list and workflow.
 
 ## Project State
 

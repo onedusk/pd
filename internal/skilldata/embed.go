@@ -11,3 +11,8 @@ import "embed"
 //
 //go:embed all:skill
 var SkillFS embed.FS
+
+// HooksFS contains the embedded hook scripts installed alongside the skill.
+//
+//go:embed hooks/*
+var HooksFS embed.FS

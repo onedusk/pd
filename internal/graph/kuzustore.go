@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 
 	kuzu "github.com/kuzudb/go-kuzu"
 )
@@ -26,6 +28,28 @@ func NewKuzuStore() (*KuzuStore, error) {
 	db, err := kuzu.OpenDatabase(":memory:", cfg)
 	if err != nil {
 		return nil, fmt.Errorf("kuzu: open database: %w", err)
+	}
+	conn, err := kuzu.OpenConnection(db)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("kuzu: open connection: %w", err)
+	}
+	return &KuzuStore{db: db, conn: conn}, nil
+}
+
+// NewKuzuFileStore creates a KuzuStore backed by a file-based KuzuDB at the
+// given directory path. KuzuDB creates the directory itself for new databases.
+// For existing databases, the directory must contain valid KuzuDB files.
+// This enables persistent graph indexes that survive across sessions.
+func NewKuzuFileStore(dbPath string) (*KuzuStore, error) {
+	// Ensure parent directory exists (KuzuDB creates the leaf directory).
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return nil, fmt.Errorf("kuzu: create parent directory: %w", err)
+	}
+	cfg := kuzu.DefaultSystemConfig()
+	db, err := kuzu.OpenDatabase(dbPath, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("kuzu: open file database: %w", err)
 	}
 	conn, err := kuzu.OpenConnection(db)
 	if err != nil {
