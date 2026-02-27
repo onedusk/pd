@@ -1,0 +1,7 @@
+{
+  "name": "@test/db",
+  "exports": {
+    ".": "./src/index.ts",
+    "./queries": "./src/queries.ts"
+  }
+}

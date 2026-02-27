@@ -14,13 +14,19 @@ import (
 
 // CodeIntelService holds the graph store and parser used by MCP tool handlers.
 type CodeIntelService struct {
-	store  graph.Store
-	parser graph.Parser
+	store       graph.Store
+	parser      graph.Parser
+	projectRoot string // used for persisting the graph to disk
 }
 
 // NewCodeIntelService creates a CodeIntelService with the given store and parser.
 func NewCodeIntelService(store graph.Store, parser graph.Parser) *CodeIntelService {
 	return &CodeIntelService{store: store, parser: parser}
+}
+
+// SetProjectRoot sets the project root used for graph persistence.
+func (s *CodeIntelService) SetProjectRoot(root string) {
+	s.projectRoot = root
 }
 
 // extToLanguage maps file extensions to graph.Language.
@@ -73,7 +79,12 @@ func (s *CodeIntelService) BuildGraph(
 		return nil, BuildGraphOutput{}, fmt.Errorf("init schema: %w", err)
 	}
 
-	var files []graph.FileNode
+	// Pass 1: parse all files, collecting results.
+	type parseEntry struct {
+		result *graph.ParseResult
+		lang   graph.Language
+	}
+	var entries []parseEntry
 
 	walkErr := filepath.WalkDir(input.RepoPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -108,27 +119,40 @@ func (s *CodeIntelService) BuildGraph(
 			return nil // skip unparseable files
 		}
 
-		if err := s.store.AddFile(ctx, result.File); err != nil {
-			return fmt.Errorf("add file %s: %w", relPath, err)
-		}
-		files = append(files, result.File)
-
-		for _, sym := range result.Symbols {
-			if err := s.store.AddSymbol(ctx, sym); err != nil {
-				return fmt.Errorf("add symbol %s: %w", sym.Name, err)
-			}
-		}
-
-		for _, edge := range result.Edges {
-			if err := s.store.AddEdge(ctx, edge); err != nil {
-				return fmt.Errorf("add edge %s->%s: %w", edge.SourceID, edge.TargetID, err)
-			}
-		}
-
+		entries = append(entries, parseEntry{result: result, lang: lang})
 		return nil
 	})
 	if walkErr != nil {
 		return nil, BuildGraphOutput{}, fmt.Errorf("walk: %w", walkErr)
+	}
+
+	// Pass 2: store all files first (needed for KuzuDB MATCH on IMPORTS edges).
+	var files []graph.FileNode
+	knownPaths := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if err := s.store.AddFile(ctx, e.result.File); err != nil {
+			return nil, BuildGraphOutput{}, fmt.Errorf("add file %s: %w", e.result.File.Path, err)
+		}
+		files = append(files, e.result.File)
+		knownPaths = append(knownPaths, e.result.File.Path)
+	}
+
+	// Build resolver to rewrite raw import specifiers into repo-relative paths.
+	resolver := graph.NewResolver(input.RepoPath, knownPaths)
+
+	// Store symbols and resolved edges.
+	for _, e := range entries {
+		for _, sym := range e.result.Symbols {
+			if err := s.store.AddSymbol(ctx, sym); err != nil {
+				return nil, BuildGraphOutput{}, fmt.Errorf("add symbol %s: %w", sym.Name, err)
+			}
+		}
+		resolved := resolver.ResolveAll(e.result.Edges, e.lang)
+		for _, edge := range resolved {
+			if err := s.store.AddEdge(ctx, edge); err != nil {
+				return nil, BuildGraphOutput{}, fmt.Errorf("add edge %s->%s: %w", edge.SourceID, edge.TargetID, err)
+			}
+		}
 	}
 
 	// Run clustering on the indexed files.
@@ -141,7 +165,73 @@ func (s *CodeIntelService) BuildGraph(
 		return nil, BuildGraphOutput{}, fmt.Errorf("stats: %w", err)
 	}
 
+	// Persist graph to disk for the augment hook.
+	if s.projectRoot != "" {
+		persistPath := filepath.Join(s.projectRoot, ".decompose", "graph")
+		if err := persistGraph(ctx, s.store, persistPath, files); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to persist graph: %v\n", err)
+		}
+	}
+
 	return nil, BuildGraphOutput{Stats: *stats}, nil
+}
+
+// persistGraph copies graph data from the in-memory store to a file-based
+// KuzuDB at persistPath. This enables the `augment` CLI command to query
+// the graph without needing the MCP server running.
+func persistGraph(ctx context.Context, src graph.Store, persistPath string, files []graph.FileNode) error {
+	// Remove old graph to avoid stale data.
+	os.RemoveAll(persistPath)
+
+	dst, err := graph.NewKuzuFileStore(persistPath)
+	if err != nil {
+		return fmt.Errorf("open file store: %w", err)
+	}
+	defer dst.Close()
+
+	if err := dst.InitSchema(ctx); err != nil {
+		return fmt.Errorf("init schema: %w", err)
+	}
+
+	for _, f := range files {
+		if err := dst.AddFile(ctx, f); err != nil {
+			return fmt.Errorf("add file %s: %w", f.Path, err)
+		}
+	}
+
+	symbols, err := src.QuerySymbols(ctx, "", 100000)
+	if err != nil {
+		return fmt.Errorf("query symbols: %w", err)
+	}
+	for _, sym := range symbols {
+		if err := dst.AddSymbol(ctx, sym); err != nil {
+			return fmt.Errorf("add symbol %s: %w", sym.Name, err)
+		}
+	}
+
+	clusters, err := src.GetClusters(ctx)
+	if err != nil {
+		return fmt.Errorf("get clusters: %w", err)
+	}
+	for _, c := range clusters {
+		if err := dst.AddCluster(ctx, c); err != nil {
+			continue // skip duplicate cluster names
+		}
+	}
+
+	// Copy all edges (IMPORTS, CALLS, DEFINES, INHERITS, IMPLEMENTS, BELONGS_TO).
+	edges, err := src.GetAllEdges(ctx)
+	if err != nil {
+		return fmt.Errorf("get edges: %w", err)
+	}
+	for _, e := range edges {
+		if err := dst.AddEdge(ctx, e); err != nil {
+			// Skip edges that reference missing nodes (e.g., filtered files).
+			continue
+		}
+	}
+
+	return nil
 }
 
 // QuerySymbols searches for symbols by name substring match.

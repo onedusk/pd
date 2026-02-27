@@ -279,13 +279,11 @@ func TestKuzuStore_Dependencies_Upstream(t *testing.T) {
 	require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "b.go", Kind: EdgeKindImports}))
 	require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "b.go", TargetID: "c.go", Kind: EdgeKindImports}))
 
-	// Upstream from B: the query MATCH (a:File)<-[:IMPORTS]-(b:File {path: $path})
-	// means b (our file) has an outgoing IMPORTS edge to a; so upstream returns
-	// what B imports, which is C.
+	// Upstream from B: who imports B? A imports B, so upstream returns A.
 	chains, err := s.GetDependencies(ctx, "b.go", DirectionUpstream, 10)
 	require.NoError(t, err)
 	require.Len(t, chains, 1)
-	assert.Equal(t, []string{"b.go", "c.go"}, chains[0].Nodes)
+	assert.Equal(t, []string{"b.go", "a.go"}, chains[0].Nodes)
 }
 
 func TestKuzuStore_AssessImpact(t *testing.T) {

@@ -30,6 +30,9 @@ type Store interface {
 	AssessImpact(ctx context.Context, changedFiles []string) (*ImpactResult, error)
 	GetClusters(ctx context.Context) ([]ClusterNode, error)
 
+	// Edge enumeration.
+	GetAllEdges(ctx context.Context) ([]Edge, error)
+
 	// Stats.
 	Stats(ctx context.Context) (*GraphStats, error)
 }

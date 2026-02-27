@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 
 	kuzu "github.com/kuzudb/go-kuzu"
 )
@@ -26,6 +28,28 @@ func NewKuzuStore() (*KuzuStore, error) {
 	db, err := kuzu.OpenDatabase(":memory:", cfg)
 	if err != nil {
 		return nil, fmt.Errorf("kuzu: open database: %w", err)
+	}
+	conn, err := kuzu.OpenConnection(db)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("kuzu: open connection: %w", err)
+	}
+	return &KuzuStore{db: db, conn: conn}, nil
+}
+
+// NewKuzuFileStore creates a KuzuStore backed by a file-based KuzuDB at the
+// given directory path. KuzuDB creates the directory itself for new databases.
+// For existing databases, the directory must contain valid KuzuDB files.
+// This enables persistent graph indexes that survive across sessions.
+func NewKuzuFileStore(dbPath string) (*KuzuStore, error) {
+	// Ensure parent directory exists (KuzuDB creates the leaf directory).
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return nil, fmt.Errorf("kuzu: create parent directory: %w", err)
+	}
+	cfg := kuzu.DefaultSystemConfig()
+	db, err := kuzu.OpenDatabase(dbPath, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("kuzu: open file database: %w", err)
 	}
 	conn, err := kuzu.OpenConnection(db)
 	if err != nil {
@@ -293,7 +317,7 @@ func (s *KuzuStore) fileNeighbors(path string, dir Direction) ([]string, error) 
 	case DirectionDownstream:
 		cypher = "MATCH (a:File {path: $path})-[:IMPORTS]->(b:File) RETURN b.path"
 	case DirectionUpstream:
-		cypher = "MATCH (a:File)<-[:IMPORTS]-(b:File {path: $path}) RETURN a.path"
+		cypher = "MATCH (a:File)-[:IMPORTS]->(b:File {path: $path}) RETURN a.path"
 	default:
 		return nil, fmt.Errorf("kuzu: unknown direction: %s", dir)
 	}
@@ -394,6 +418,42 @@ func (s *KuzuStore) GetClusters(_ context.Context) ([]ClusterNode, error) {
 		})
 	}
 	return out, nil
+}
+
+// ---------- Edge enumeration ----------
+
+// GetAllEdges returns all edges across all relationship tables.
+func (s *KuzuStore) GetAllEdges(_ context.Context) ([]Edge, error) {
+	type relQuery struct {
+		cypher string
+		kind   EdgeKind
+	}
+
+	queries := []relQuery{
+		{"MATCH (a:File)-[:DEFINES]->(b:Symbol) RETURN a.path, b.id", EdgeKindDefines},
+		{"MATCH (a:File)-[:IMPORTS]->(b:File) RETURN a.path, b.path", EdgeKindImports},
+		{"MATCH (a:Symbol)-[:CALLS]->(b:Symbol) RETURN a.id, b.id", EdgeKindCalls},
+		{"MATCH (a:Symbol)-[:INHERITS_FROM]->(b:Symbol) RETURN a.id, b.id", EdgeKindInherits},
+		{"MATCH (a:Symbol)-[:IMPLEMENTS]->(b:Symbol) RETURN a.id, b.id", EdgeKindImplements},
+		{"MATCH (a:File)-[:BELONGS_TO]->(b:Cluster) RETURN a.path, b.name", EdgeKindBelongs},
+	}
+
+	var edges []Edge
+	for _, q := range queries {
+		rows, err := s.query(q.cypher, nil)
+		if err != nil {
+			// Table may not exist yet; skip.
+			continue
+		}
+		for _, r := range rows {
+			edges = append(edges, Edge{
+				SourceID: toString(r[0]),
+				TargetID: toString(r[1]),
+				Kind:     q.kind,
+			})
+		}
+	}
+	return edges, nil
 }
 
 // ---------- Stats ----------

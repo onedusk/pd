@@ -55,6 +55,12 @@ type Config struct {
 	// Empty when Capability < CapA2AMCP.
 	AgentEndpoints []string
 
+	// InputFile is the path to a high-level input file that seeds Stage 1.
+	InputFile string
+
+	// InputContent is the inline content that seeds Stage 1 (alternative to InputFile).
+	InputContent string
+
 	// SingleAgent forces single-agent mode regardless of available capabilities.
 	SingleAgent bool
 
