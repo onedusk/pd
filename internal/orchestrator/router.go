@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,27 +116,35 @@ func stageFileName(stage Stage) string {
 	return fmt.Sprintf("stage-%d-%s.md", int(stage), stage.String())
 }
 
-// resolvePrerequisites reads the output files for all prerequisite stages and
-// returns them as StageResult values. Required prerequisites that are missing
-// cause an error; optional ones log a warning.
+// resolvePrerequisites reads the output files for all prior stages and returns
+// them as StageResult values. Required prerequisites that are missing cause an
+// error; optional ones are silently skipped. Reading all prior stages (not just
+// declared prerequisites) ensures downstream executors can correctly infer the
+// current stage index from the input set.
 func (r *Router) resolvePrerequisites(stage Stage) ([]StageResult, error) {
-	rules := prerequisites(stage)
-	if len(rules) == 0 {
+	if stage == StageDevelopmentStandards {
 		return nil, nil
+	}
+
+	// Build a set of required stages for fast lookup.
+	rules := prerequisites(stage)
+	required := make(map[Stage]bool, len(rules))
+	for _, rule := range rules {
+		if rule.required {
+			required[rule.stage] = true
+		}
 	}
 
 	var inputs []StageResult
 
-	for _, rule := range rules {
-		result, err := r.readStageOutput(rule.stage)
+	for s := StageDevelopmentStandards; s < stage; s++ {
+		result, err := r.readStageOutput(s)
 		if err != nil {
-			if rule.required {
+			if required[s] {
 				return nil, fmt.Errorf("required prerequisite stage %d (%s) not satisfied: %w",
-					rule.stage, rule.stage, err)
+					s, s, err)
 			}
-			// Optional prerequisite: warn and continue.
-			log.Printf("WARNING: optional prerequisite stage %d (%s) not found: %v",
-				rule.stage, rule.stage, err)
+			// Non-required prior stage: skip silently.
 			continue
 		}
 		inputs = append(inputs, *result)

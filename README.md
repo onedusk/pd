@@ -62,13 +62,81 @@ Most SDD tools implement a 3-stage pipeline. Progressive Decomposition adds two 
 - **Stage 0 (Development Standards)** grounds the project in verified platform versions, tooling baselines, and team norms — preventing hallucinated framework APIs and inconsistent conventions.
 - **Stage 2 (Implementation Skeletons)** forces the design into compilable type definitions *before* task planning begins. Schema definitions reveal ambiguities that prose descriptions hide — specifically in data models and interface contracts, where type systems enforce unambiguous field types, nullability, and relationships. A field can't be both required and nullable in a type system — but it can be in a design doc.
 
-## Quick Start
+## Quick Start (Manual)
 
 1. Copy `templates/` into your project's `docs/` directory
 2. Read [`process-guide.md`](process-guide.md) for the full methodology
 3. Fill in Stage 0 once for your team/org
 4. For each new project, work through Stages 1–4 in order
 5. Refer to [`examples/`](examples/) for concrete illustrations from a real project
+
+## decompose CLI
+
+The `decompose` binary automates the pipeline with optional multi-agent parallelism via the A2A protocol.
+
+### Installation
+
+```bash
+go install github.com/dusk-indust/decompose/cmd/decompose@latest
+```
+
+Or download a prebuilt binary from [GitHub Releases](https://github.com/dusk-indust/decompose/releases).
+
+**Prerequisites:** Go 1.25+, C toolchain (CGO required for tree-sitter and KuzuDB)
+
+### Usage
+
+```bash
+# Run all stages (0-4)
+decompose myproject
+
+# Run a single stage
+decompose myproject 1
+
+# Run with explicit agent endpoints
+decompose --agents http://localhost:9100,http://localhost:9101 myproject
+
+# Force single-agent mode (no A2A dispatch)
+decompose --single-agent myproject
+
+# Run as MCP server for Claude Code integration
+decompose --serve-mcp --project-root /path/to/project
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project-root` | `.` | Path to the target project |
+| `--output-dir` | `docs/decompose/<name>` | Output directory for decomposition files |
+| `--agents` | (auto-detect) | Comma-separated A2A agent endpoint URLs |
+| `--single-agent` | `false` | Force single-agent mode |
+| `--serve-mcp` | `false` | Run as MCP server on stdio |
+| `--verbose` | `false` | Enable verbose output |
+| `--version` | | Print version and exit |
+
+### Capability Levels
+
+The binary auto-detects available infrastructure and selects the highest capability level:
+
+| Level | Name | Agents | MCP Tools | Code Intelligence | Execution Mode |
+|:-----:|------|:------:|:---------:|:-----------------:|----------------|
+| 0 | Basic | — | — | — | Template generation with TODO markers |
+| 1 | MCP-Only | — | Yes | — | Sequential MCP-backed generation |
+| 2 | A2A+MCP | Yes | Yes | — | Parallel agent fan-out with merge |
+| 3 | Full | Yes | Yes | Yes | Full pipeline with code graph analysis |
+
+### Development
+
+```bash
+make build          # Build binary to bin/decompose
+make test           # Run unit tests with race detector
+make test-e2e       # Run end-to-end tests
+make vet            # Run go vet
+make lint           # Run golangci-lint
+make clean          # Remove build artifacts
+make update-golden  # Regenerate golden test files
+```
 
 ## Principles
 
@@ -110,7 +178,7 @@ progressive-decomposition/
 
 ## License
 
-[PolyForm Shield 1.0.0](LICENSE.txt)
+[PolyForm Shield 1.0.0](LICENSE)
 
 ---
 

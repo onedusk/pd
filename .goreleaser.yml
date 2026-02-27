@@ -1,0 +1,31 @@
+version: 2
+
+project_name: decompose
+
+builds:
+  - main: ./cmd/decompose
+    binary: decompose
+    env:
+      - CGO_ENABLED=1
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
