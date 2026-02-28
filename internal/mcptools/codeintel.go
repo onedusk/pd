@@ -60,3 +60,11 @@ type GetClustersInput struct{}
 type GetClustersOutput struct {
 	Clusters []graph.ClusterNode `json:"clusters"`
 }
+
+// GenerateDiagramInput is the input for the generate_diagram MCP tool.
+type GenerateDiagramInput struct{}
+
+// GenerateDiagramOutput is the result of the generate_diagram MCP tool.
+type GenerateDiagramOutput struct {
+	Mermaid string `json:"mermaid"`
+}

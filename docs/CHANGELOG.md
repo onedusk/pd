@@ -5,6 +5,27 @@ All notable changes to the progressive-decomposition project.
 ## [Unreleased]
 
 ### Added
+- **`--help` flag and usage output** — custom help with synopsis, subcommand table, stage descriptions, examples, and all flags. `--help` exits cleanly (code 0); bare `decompose` shows usage then errors.
+- **`decompose status [name]`** CLI command — shows stage completion for one or all decompositions. Shared `internal/status` package used by both CLI and MCP `get_status` tool.
+- **`decompose export <name>`** CLI command — exports decomposition as structured JSON to stdout. Parses Stage 4 task markdown files to extract task IDs, titles, file actions, dependencies, and acceptance criteria. 73 tasks parsed from the agent-parallel decomposition.
+- **`decompose diagram`** CLI command + `generate_diagram` MCP tool — produces Mermaid `graph TD` diagrams from the persisted code graph. Clusters become subgraphs, IMPORTS edges become arrows.
+- **Config file support (`decompose.yml`)** — project-level YAML config with `outputDir`, `languages`, `excludeDirs`, `templatePath`, `verbose`, `singleAgent`, `graphExcludes`. CLI flags override config values. Uses `gopkg.in/yaml.v3` (already an indirect dep).
+- **Template customization** — `GetStageContext` checks `.decompose/templates/stage-{N}-{name}.md` before falling back to embedded templates. Per-project template overrides without modifying the binary.
+- **Graph build progress indicators** — stderr output during `build_graph`: file scan count, parsing progress (every 100 files), resolved edge count, clustering status.
+- **MCP server startup/shutdown messages** — `decompose MCP server v{version} starting on stdio (project: {path})` on stderr at startup; shutdown message on exit.
+- **TypeScript wildcard export resolution** — `package.json` exports with `*` patterns (e.g., `"./components/*": "./src/components/*.tsx"`) now resolve correctly. Array export values use first-match semantics.
+- **3 new resolver tests** — workspace wildcard, conditional exports, and array export value parsing.
+- **`internal/export` package** — `json.go` (structured decomposition export with task parsing), `mermaid.go` (graph-to-Mermaid generation).
+- **`internal/config` package** — YAML config loading with `Load(dir)`.
+- **`internal/status` package** — shared stage scanning extracted from MCP handlers.
+
+### Fixed
+- **Better error messages** — capability detection failure now explains what was probed and suggests `--agents`. Init checks for `jq` on PATH and warns if missing. Verbose mode shows human-readable capability descriptions.
+
+### Changed
+- **`scanCompletedStages` and `nextStage` extracted** from `internal/mcptools/decompose_handlers.go` to `internal/status/status.go` — eliminates duplication between MCP and CLI code paths.
+
+### Added (import-resolution)
 - **Import path resolution** (`internal/graph/resolve.go`) — new `Resolver` type rewrites raw import specifiers to repo-relative file paths during `build_graph`. Supports TypeScript (relative + workspace packages via `package.json` exports), Go (local module imports via `go.mod`), Python (relative dot imports), and Rust (`crate::`/`self::`/`super::` paths). External packages silently skipped.
 - **Two-pass BuildGraph** — `build_graph` now collects all parse results first, then stores files, builds the resolver, and stores symbols + resolved edges. Ensures all File nodes exist before IMPORTS edges reference them.
 - **`GetAllEdges` on Store interface** — new method to enumerate all edges; used by clustering (O(E) adjacency build) and `persistGraph` (edge copying to file store).

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dusk-indust/decompose/internal/export"
 	"github.com/dusk-indust/decompose/internal/graph"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -86,6 +87,7 @@ func (s *CodeIntelService) BuildGraph(
 	}
 	var entries []parseEntry
 
+	fmt.Fprintf(os.Stderr, "Scanning files...\n")
 	walkErr := filepath.WalkDir(input.RepoPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // skip inaccessible paths
@@ -125,22 +127,27 @@ func (s *CodeIntelService) BuildGraph(
 	if walkErr != nil {
 		return nil, BuildGraphOutput{}, fmt.Errorf("walk: %w", walkErr)
 	}
+	fmt.Fprintf(os.Stderr, "Parsed %d files\n", len(entries))
 
 	// Pass 2: store all files first (needed for KuzuDB MATCH on IMPORTS edges).
 	var files []graph.FileNode
 	knownPaths := make([]string, 0, len(entries))
-	for _, e := range entries {
+	for i, e := range entries {
 		if err := s.store.AddFile(ctx, e.result.File); err != nil {
 			return nil, BuildGraphOutput{}, fmt.Errorf("add file %s: %w", e.result.File.Path, err)
 		}
 		files = append(files, e.result.File)
 		knownPaths = append(knownPaths, e.result.File.Path)
+		if (i+1)%100 == 0 {
+			fmt.Fprintf(os.Stderr, "Indexing... (%d/%d files)\n", i+1, len(entries))
+		}
 	}
 
 	// Build resolver to rewrite raw import specifiers into repo-relative paths.
 	resolver := graph.NewResolver(input.RepoPath, knownPaths)
 
 	// Store symbols and resolved edges.
+	edgeCount := 0
 	for _, e := range entries {
 		for _, sym := range e.result.Symbols {
 			if err := s.store.AddSymbol(ctx, sym); err != nil {
@@ -152,10 +159,13 @@ func (s *CodeIntelService) BuildGraph(
 			if err := s.store.AddEdge(ctx, edge); err != nil {
 				return nil, BuildGraphOutput{}, fmt.Errorf("add edge %s->%s: %w", edge.SourceID, edge.TargetID, err)
 			}
+			edgeCount++
 		}
 	}
+	fmt.Fprintf(os.Stderr, "Resolved %d import edges\n", edgeCount)
 
 	// Run clustering on the indexed files.
+	fmt.Fprintf(os.Stderr, "Clustering...\n")
 	if _, err := graph.ComputeClusters(ctx, s.store, files); err != nil {
 		return nil, BuildGraphOutput{}, fmt.Errorf("compute clusters: %w", err)
 	}
@@ -326,4 +336,17 @@ func (s *CodeIntelService) GetClusters(
 	}
 
 	return nil, GetClustersOutput{Clusters: clusters}, nil
+}
+
+// GenerateDiagram produces a Mermaid dependency diagram from the graph.
+func (s *CodeIntelService) GenerateDiagram(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	_ GenerateDiagramInput,
+) (*mcp.CallToolResult, GenerateDiagramOutput, error) {
+	mermaid, err := export.GenerateMermaid(ctx, s.store)
+	if err != nil {
+		return nil, GenerateDiagramOutput{}, err
+	}
+	return nil, GenerateDiagramOutput{Mermaid: mermaid}, nil
 }

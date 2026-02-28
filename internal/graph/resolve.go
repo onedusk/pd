@@ -26,6 +26,9 @@ type tsWorkspace struct {
 	dir            string            // repo-relative directory (e.g. "packages/db")
 	mainFile       string            // default export target, repo-relative
 	subpathExports map[string]string // "./queries" → "packages/db/src/queries.ts"
+	// wildcardExports maps patterns like "./components/*" → "./src/components/*.ts".
+	// The key contains a literal "*" that matches any single path segment.
+	wildcardExports map[string]string
 }
 
 // NewResolver builds a Resolver from the repository root and the set of
@@ -160,10 +163,46 @@ func (r *Resolver) resolveTSWorkspace(importPath string) (string, bool) {
 		return target, true
 	}
 
+	// Check wildcard exports (e.g. "./components/*" matching "./components/Button").
+	for pattern, template := range ws.wildcardExports {
+		if matched, replacement := matchWildcard(pattern, subpath); matched {
+			target := strings.Replace(template, "*", replacement, 1)
+			resolved := filepath.Clean(filepath.Join(ws.dir, target))
+			if r.fileSet[resolved] {
+				return resolved, true
+			}
+			if probed, ok := r.probeFile(resolved, tsExtensions); ok {
+				return probed, true
+			}
+		}
+	}
+
 	// Fallback: try resolving subpath as a file relative to the workspace dir.
 	relPath := subpath[2:] // strip "./"
 	base := filepath.Join(ws.dir, relPath)
 	return r.probeFile(base, tsExtensions)
+}
+
+// matchWildcard checks if subpath matches a pattern like "./components/*".
+// Returns the matched segment that replaced *.
+func matchWildcard(pattern, subpath string) (bool, string) {
+	starIdx := strings.Index(pattern, "*")
+	if starIdx == -1 {
+		return false, ""
+	}
+	prefix := pattern[:starIdx]
+	suffix := pattern[starIdx+1:]
+	if !strings.HasPrefix(subpath, prefix) {
+		return false, ""
+	}
+	if suffix == "" {
+		return true, subpath[len(prefix):]
+	}
+	if !strings.HasSuffix(subpath, suffix) {
+		return false, ""
+	}
+	mid := subpath[len(prefix) : len(subpath)-len(suffix)]
+	return true, mid
 }
 
 // --- Go resolution ---
@@ -402,8 +441,9 @@ func (r *Resolver) loadWorkspacePackage(absDir string) {
 	}
 
 	ws := &tsWorkspace{
-		dir:            relDir,
-		subpathExports: make(map[string]string),
+		dir:             relDir,
+		subpathExports:  make(map[string]string),
+		wildcardExports: make(map[string]string),
 	}
 
 	// Parse exports field.
@@ -465,6 +505,12 @@ func (r *Resolver) parseExports(ws *tsWorkspace, raw json.RawMessage) {
 			continue
 		}
 
+		// Wildcard exports: store the pattern and template for runtime matching.
+		if strings.Contains(key, "*") {
+			ws.wildcardExports[key] = target
+			continue
+		}
+
 		resolved := filepath.Clean(filepath.Join(ws.dir, target))
 		var finalPath string
 		if r.fileSet[resolved] {
@@ -484,12 +530,24 @@ func (r *Resolver) parseExports(ws *tsWorkspace, raw json.RawMessage) {
 }
 
 // resolveExportValue extracts a file path from an export value, which can be
-// a string or a conditional object {"import": "...", "require": "...", "default": "..."}.
+// a string, an array (first match wins), or a conditional object
+// {"import": "...", "require": "...", "default": "..."}.
 func resolveExportValue(raw json.RawMessage) string {
 	// Try as plain string.
 	var str string
 	if err := json.Unmarshal(raw, &str); err == nil {
 		return str
+	}
+
+	// Try as array — use first element that resolves to a string.
+	var arr []json.RawMessage
+	if err := json.Unmarshal(raw, &arr); err == nil && len(arr) > 0 {
+		for _, elem := range arr {
+			if v := resolveExportValue(elem); v != "" {
+				return v
+			}
+		}
+		return ""
 	}
 
 	// Try as conditional object — prefer "import", then "default", then "require".
