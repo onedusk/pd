@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -130,6 +131,12 @@ func runInit(projectRoot string, force bool) error {
 	})
 	if err != nil {
 		return fmt.Errorf("copying hook files: %w", err)
+	}
+
+	// Check for hook dependencies.
+	if _, err := exec.LookPath("jq"); err != nil {
+		fmt.Fprintln(os.Stderr, "  note: the augmentation hook requires 'jq' (not found in PATH)")
+		fmt.Fprintln(os.Stderr, "        install with: brew install jq (macOS) or apt install jq (Linux)")
 	}
 
 	// --- Create/merge .mcp.json ---

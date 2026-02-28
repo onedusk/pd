@@ -119,6 +119,60 @@ func TestResolveTS_WorkspaceSubpath(t *testing.T) {
 	}
 }
 
+func TestResolveTS_WorkspaceWildcard(t *testing.T) {
+	fixtureRoot := "../../testdata/fixtures/ts_monorepo"
+
+	knownFiles := []string{
+		"packages/ui/src/index.ts",
+		"packages/ui/src/components/Button.tsx",
+		"packages/logger/src/index.ts",
+		"src/app.ts",
+	}
+
+	r := NewResolver(fixtureRoot, knownFiles)
+
+	edge := Edge{SourceID: "src/app.ts", TargetID: "@test/ui/components/Button", Kind: EdgeKindImports}
+	got, ok := r.ResolveEdge(edge, LangTypeScript)
+	if !ok {
+		t.Fatalf("expected @test/ui/components/Button to resolve via wildcard export; wildcards: %v", r.tsWorkspaces["@test/ui"].wildcardExports)
+	}
+	if got.TargetID != "packages/ui/src/components/Button.tsx" {
+		t.Errorf("TargetID = %q, want %q", got.TargetID, "packages/ui/src/components/Button.tsx")
+	}
+}
+
+func TestResolveTS_WorkspaceConditionalExport(t *testing.T) {
+	fixtureRoot := "../../testdata/fixtures/ts_monorepo"
+
+	knownFiles := []string{
+		"packages/ui/src/index.ts",
+		"packages/ui/src/components/Button.tsx",
+		"src/app.ts",
+	}
+
+	r := NewResolver(fixtureRoot, knownFiles)
+
+	// The @test/ui package has conditional exports: {"import": "./src/index.mjs", "default": "./src/index.ts"}
+	// Since index.mjs is not in knownFiles, it should fall back to "default" → ./src/index.ts.
+	edge := Edge{SourceID: "src/app.ts", TargetID: "@test/ui", Kind: EdgeKindImports}
+	got, ok := r.ResolveEdge(edge, LangTypeScript)
+	if !ok {
+		t.Fatal("expected @test/ui to resolve via conditional export")
+	}
+	if got.TargetID != "packages/ui/src/index.ts" {
+		t.Errorf("TargetID = %q, want %q", got.TargetID, "packages/ui/src/index.ts")
+	}
+}
+
+func TestResolveExportValue_Array(t *testing.T) {
+	// Array export value: first match wins.
+	raw := []byte(`["./src/index.mjs", "./src/index.js"]`)
+	got := resolveExportValue(raw)
+	if got != "./src/index.mjs" {
+		t.Errorf("resolveExportValue array = %q, want %q", got, "./src/index.mjs")
+	}
+}
+
 func TestResolveTS_ExternalPackage(t *testing.T) {
 	r := NewResolver("/tmp/fake", []string{"src/app.ts"})
 

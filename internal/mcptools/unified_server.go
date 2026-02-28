@@ -81,6 +81,11 @@ func NewUnifiedMCPServer(pipeline orchestrator.Orchestrator, cfg orchestrator.Co
 			Name:        "get_clusters",
 			Description: "Return all file clusters discovered during graph building. Clusters are groups of tightly connected files with cohesion scores.",
 		}, codeintel.GetClusters)
+
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        "generate_diagram",
+			Description: "Generate a Mermaid dependency diagram from the code graph. Clusters become subgraphs, imports become arrows.",
+		}, codeintel.GenerateDiagram)
 	}
 
 	return server
