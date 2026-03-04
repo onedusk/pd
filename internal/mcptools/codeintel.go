@@ -1,6 +1,6 @@
 package mcptools
 
-import "github.com/dusk-indust/decompose/internal/graph"
+import "github.com/onedusk/pd/internal/graph"
 
 // --- MCP Tool Input Types ---
 // These structs define the JSON schema for each MCP tool's input.

@@ -10,7 +10,7 @@
   - **File:** `go.mod` (CREATE), `go.sum` (CREATE), `LICENSE` (CREATE)
   - **Depends on:** None
   - **Outline:**
-    - Run `go mod init github.com/dusk-indust/decompose`
+    - Run `go mod init github.com/onedusk/pd`
     - Add dependencies: `github.com/stretchr/testify` (testing)
     - Copy PolyForm Shield 1.0.0 license text to `LICENSE`
     - No other dependencies yet — A2A types are hand-written, graph/MCP dependencies come in M2/M3

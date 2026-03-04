@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dusk-indust/decompose/internal/graph"
+	"github.com/onedusk/pd/internal/graph"
 )
 
 // GenerateMermaid produces a Mermaid graph TD diagram from a graph store.

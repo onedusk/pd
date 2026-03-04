@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dusk-indust/decompose/internal/orchestrator"
-	"github.com/dusk-indust/decompose/internal/skilldata"
-	"github.com/dusk-indust/decompose/internal/status"
+	"github.com/onedusk/pd/internal/orchestrator"
+	"github.com/onedusk/pd/internal/skilldata"
+	"github.com/onedusk/pd/internal/status"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

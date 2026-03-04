@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dusk-indust/decompose/internal/orchestrator"
+	"github.com/onedusk/pd/internal/orchestrator"
 )
 
 // StageInfo describes the completion state of a single stage.

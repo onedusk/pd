@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dusk-indust/decompose/internal/a2a"
+	"github.com/onedusk/pd/internal/a2a"
 )
 
 // Compile-time interface checks.

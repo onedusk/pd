@@ -1,4 +1,4 @@
-module github.com/dusk-indust/decompose
+module github.com/onedusk/pd
 
 go 1.25.0
 

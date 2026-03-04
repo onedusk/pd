@@ -10,24 +10,29 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dusk-indust/decompose/internal/a2a"
-	"github.com/dusk-indust/decompose/internal/config"
-	"github.com/dusk-indust/decompose/internal/graph"
-	"github.com/dusk-indust/decompose/internal/mcptools"
-	"github.com/dusk-indust/decompose/internal/orchestrator"
+	"github.com/onedusk/pd/internal/a2a"
+	"github.com/onedusk/pd/internal/agent"
+	"github.com/onedusk/pd/internal/config"
+	"github.com/onedusk/pd/internal/graph"
+	"github.com/onedusk/pd/internal/mcptools"
+	"github.com/onedusk/pd/internal/orchestrator"
+	"github.com/onedusk/pd/internal/status"
 )
 
 // CLI flags parsed from command line.
 type cliFlags struct {
-	ProjectRoot string
-	OutputDir   string
-	InputFile   string
-	Agents      string
-	SingleAgent bool
-	Verbose     bool
-	ServeMCP    bool
-	Force       bool
-	Version     bool
+	ProjectRoot      string
+	OutputDir        string
+	InputFile        string
+	Agents           string
+	SingleAgent      bool
+	SkipVerification bool
+	ReviewMode       string
+	MaxConcurrent    int
+	Verbose          bool
+	ServeMCP         bool
+	Force            bool
+	Version          bool
 }
 
 // version is set by goreleaser at build time.
@@ -51,6 +56,9 @@ func run(args []string) error {
 	fs.BoolVar(&flags.Verbose, "verbose", false, "enable verbose output")
 	fs.BoolVar(&flags.ServeMCP, "serve-mcp", false, "run as MCP server for Claude Code integration")
 	fs.StringVar(&flags.InputFile, "input", "", "path to a high-level input file (idea, spec, or plan) to seed Stage 1")
+	fs.BoolVar(&flags.SkipVerification, "skip-verification", false, "skip post-stage verification")
+	fs.StringVar(&flags.ReviewMode, "review-mode", "cli", "review strategy for implement command: cli, pr, file")
+	fs.IntVar(&flags.MaxConcurrent, "max-concurrent", 3, "max parallel Claude Code sessions for implement command")
 	fs.BoolVar(&flags.Force, "force", false, "overwrite existing files during init")
 	fs.BoolVar(&flags.Version, "version", false, "print version and exit")
 
@@ -144,6 +152,12 @@ func run(args []string) error {
 		}
 		return runAugment(projectRoot, pattern)
 	}
+	if len(positional) > 0 && positional[0] == "implement" {
+		if len(positional) < 2 {
+			return fmt.Errorf("usage: decompose implement <name>")
+		}
+		return runImplement(ctx, projectRoot, positional[1], flags)
+	}
 
 	// Positional args: [name] [stage]
 	if len(positional) < 1 {
@@ -192,14 +206,15 @@ func run(args []string) error {
 	}
 
 	cfg := orchestrator.Config{
-		Name:           name,
-		ProjectRoot:    projectRoot,
-		OutputDir:      outputDir,
-		InputFile:      flags.InputFile,
-		Capability:     cap,
-		AgentEndpoints: agentEndpoints,
-		SingleAgent:    flags.SingleAgent,
-		Verbose:        flags.Verbose,
+		Name:             name,
+		ProjectRoot:      projectRoot,
+		OutputDir:        outputDir,
+		InputFile:        flags.InputFile,
+		Capability:       cap,
+		AgentEndpoints:   agentEndpoints,
+		SingleAgent:      flags.SingleAgent,
+		SkipVerification: flags.SkipVerification,
+		Verbose:          flags.Verbose,
 	}
 
 	// Create pipeline.
@@ -256,6 +271,99 @@ func run(args []string) error {
 	return runErr
 }
 
+func runImplement(ctx context.Context, projectRoot, name string, flags cliFlags) error {
+	outputDir := filepath.Join(projectRoot, "docs", "decompose", name)
+
+	// Verify decomposition is complete.
+	ds := status.GetDecompositionStatus(projectRoot, name)
+	for _, s := range ds.Stages {
+		if !s.Complete {
+			return fmt.Errorf("stage %d (%s) is not complete; run full decomposition before implementing", s.Stage, s.Name)
+		}
+	}
+
+	// Read and parse Stage 3 milestone dependencies.
+	stage3Path := filepath.Join(outputDir, fmt.Sprintf("stage-3-%s.md", orchestrator.StageTaskIndex.String()))
+	stage3Content, err := os.ReadFile(stage3Path)
+	if err != nil {
+		return fmt.Errorf("read stage 3: %w", err)
+	}
+	milestones, err := orchestrator.ParseMilestones(string(stage3Content))
+	if err != nil {
+		return fmt.Errorf("parse milestones: %w", err)
+	}
+
+	// Map milestones to task spec files.
+	for i := range milestones {
+		num := extractMilestoneNum(milestones[i].ID)
+		milestones[i].TaskSpecPath = filepath.Join(outputDir, fmt.Sprintf("tasks_m%02d.md", num))
+	}
+
+	// Build scheduler.
+	scheduler, err := orchestrator.NewScheduler(milestones)
+	if err != nil {
+		return fmt.Errorf("build scheduler: %w", err)
+	}
+
+	// Select review strategy.
+	var review orchestrator.ReviewStrategy
+	switch flags.ReviewMode {
+	case "pr":
+		review = orchestrator.NewPRReviewStrategy("main", "origin")
+	case "file":
+		review = orchestrator.NewFileReviewStrategy(filepath.Join(outputDir, "reviews"))
+	default:
+		review = orchestrator.NewCLIReviewStrategy(os.Stdin, os.Stdout)
+	}
+
+	// Create implementer function.
+	impl := agent.NewImplementerAgent(projectRoot, outputDir)
+	implementer := func(ctx context.Context, milestone *orchestrator.MilestoneNode) ([]orchestrator.ImplementationArtifact, error) {
+		return impl.ImplementMilestone(ctx, milestone)
+	}
+
+	// Build and run implementation pipeline.
+	cfg := orchestrator.ImplementConfig{
+		Name:          name,
+		ProjectRoot:   projectRoot,
+		OutputDir:     outputDir,
+		MaxConcurrent: flags.MaxConcurrent,
+		Verbose:       flags.Verbose,
+	}
+
+	pipeline := orchestrator.NewImplementPipeline(cfg, scheduler, review, implementer)
+
+	// Drain progress events in background.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for ev := range pipeline.Progress() {
+			fmt.Fprintln(os.Stderr, orchestrator.FormatProgress(ev))
+		}
+	}()
+
+	runErr := pipeline.Run(ctx)
+
+	pipeline.Close()
+	<-done
+
+	// Print summary.
+	fmt.Println(orchestrator.FormatImplementationSummary(scheduler.Milestones()))
+
+	return runErr
+}
+
+// extractMilestoneNum extracts the numeric part from a milestone ID like "M3".
+func extractMilestoneNum(id string) int {
+	n := 0
+	for _, c := range id {
+		if c >= '0' && c <= '9' {
+			n = n*10 + int(c-'0')
+		}
+	}
+	return n
+}
+
 func capDescription(cap orchestrator.CapabilityLevel) string {
 	switch cap {
 	case orchestrator.CapBasic:
@@ -275,7 +383,8 @@ func printUsage(fs *flag.FlagSet) {
 	w := os.Stderr
 	fmt.Fprintf(w, "decompose v%s — spec-driven development pipeline\n\n", version)
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  decompose [flags] <name> [stage]   Run pipeline or single stage")
+	fmt.Fprintln(w, "  decompose [flags] <name> [stage]    Run pipeline or single stage")
+	fmt.Fprintln(w, "  decompose [flags] implement <name>  Implement via Claude Code sessions")
 	fmt.Fprintln(w, "  decompose [flags] init              Install skill, hooks, and MCP config")
 	fmt.Fprintln(w, "  decompose [flags] status [name]     Show decomposition status")
 	fmt.Fprintln(w, "  decompose [flags] export <name>     Export decomposition as JSON")

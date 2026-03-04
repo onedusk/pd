@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dusk-indust/decompose/internal/a2a"
+	"github.com/onedusk/pd/internal/a2a"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -109,7 +109,7 @@ func TestResearchAgent_ResearchPlatform_WithGoMod(t *testing.T) {
 	require.NotEmpty(t, result.Artifacts)
 
 	text := result.Artifacts[0].Parts[0].Text
-	assert.Contains(t, text, "github.com/dusk-indust/decompose")
+	assert.Contains(t, text, "github.com/onedusk/pd")
 }
 
 // ---------------------------------------------------------------------------

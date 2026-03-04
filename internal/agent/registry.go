@@ -26,6 +26,7 @@ func NewRegistry() *Registry {
 	r.factories[RoleSchema] = func() Agent { return NewSchemaAgent() }
 	r.factories[RolePlanning] = func() Agent { return NewPlanningAgent() }
 	r.factories[RoleTaskWriter] = func() Agent { return NewTaskWriterAgent() }
+	r.factories[RoleVerification] = func() Agent { return NewVerificationAgent() }
 	return r
 }
 
@@ -50,7 +51,7 @@ func (r *Registry) SpawnAll(ctx context.Context, basePort int) ([]Agent, error) 
 	defer r.mu.Unlock()
 
 	// Use a deterministic order for port assignment.
-	roles := []Role{RoleResearch, RoleSchema, RolePlanning, RoleTaskWriter}
+	roles := []Role{RoleResearch, RoleSchema, RolePlanning, RoleTaskWriter, RoleVerification}
 
 	var agents []Agent
 	for i, role := range roles {

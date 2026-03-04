@@ -77,10 +77,10 @@ The `decompose` binary automates the pipeline with optional multi-agent parallel
 ### Installation
 
 ```bash
-go install github.com/dusk-indust/decompose/cmd/decompose@latest
+go install github.com/onedusk/pd/cmd/decompose@latest
 ```
 
-Or download a prebuilt binary from [GitHub Releases](https://github.com/dusk-indust/decompose/releases).
+Or download a prebuilt binary from [GitHub Releases](https://github.com/onedusk/pd/releases).
 
 **Prerequisites:** Go 1.25+, C toolchain (CGO required for tree-sitter and KuzuDB)
 

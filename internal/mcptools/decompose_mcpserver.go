@@ -3,7 +3,7 @@ package mcptools
 import (
 	"context"
 
-	"github.com/dusk-indust/decompose/internal/orchestrator"
+	"github.com/onedusk/pd/internal/orchestrator"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

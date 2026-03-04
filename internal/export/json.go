@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dusk-indust/decompose/internal/status"
+	"github.com/onedusk/pd/internal/status"
 )
 
 // DecompositionExport is the top-level JSON export structure.

@@ -5,6 +5,19 @@ All notable changes to the progressive-decomposition project.
 ## [Unreleased]
 
 ### Added
+- **Verification agent + pipeline integration** — "fresh eyes" post-stage verification that catches gaps before they propagate. `VerificationReport` with severity levels (critical/warning/info), 50+ rule-based checks across all 5 stages plus cross-stage coherence rules. Critical findings block pipeline progression in `RouteRange`. Runs automatically after each stage; skip with `--skip-verification`.
+- **Verification agent** (`internal/agent/verification.go`) — A2A-compatible agent with `verify-stage` and `verify-cross-stage` skills. Receives only stage output content (never producing agent's context) for "fresh eyes" isolation. Registered as `RoleVerification` in agent registry.
+- **Milestone scheduler** (`internal/orchestrator/scheduler.go`) — dependency-aware DAG scheduler using Kahn's algorithm for cycle detection. Thread-safe with `sync.Mutex`. `Ready()`, `MarkRunning()`, `MarkCompleted()`, `MarkFailed()`, `AllCompleted()`. `ParseMilestones()` extracts dependency relationships from Stage 3 markdown.
+- **Review gates** (`internal/orchestrator/review.go`) — `ReviewStrategy` interface with three implementations: `CLIReviewStrategy` (terminal prompt), `PRReviewStrategy` (`gh pr create` + poll), `FileReviewStrategy` (sentinel file polling). Select at runtime with `--review-mode cli|pr|file`.
+- **Implementation pipeline** (`internal/orchestrator/implement.go`) — coordinates milestone fan-out to parallel Claude Code sessions respecting the Stage 3 dependency DAG. `ImplementerFunc` abstraction enables testing without spawning actual processes. Batch concurrency controlled by `--max-concurrent N`.
+- **`decompose implement <name>`** CLI command — verifies decomposition completeness, parses milestones, builds scheduler, selects review strategy, runs implementation pipeline. Each milestone spawns a focused `claude --print` session with Stage 0 + Stage 2 + task spec context only.
+- **Implementer agent** (`internal/agent/implementer.go`) — wraps Claude Code CLI as implementation adapter. Composes focused prompts, spawns `claude --print --output-format stream-json --max-turns 50`, collects changed files via `git diff`.
+- **Eval framework design** (`docs/internal/eval-framework-design.md`) — design document for empirical evaluation of pd's methodology claims. Defines rubric-based scoring (ambiguity, completeness, file accuracy, clarification count), comparative evaluation, Stage 2 ablation study, and LLM-as-judge extension point.
+
+### Changed
+- **Go module path** — renamed from `github.com/dusk-indust/decompose` to `github.com/onedusk/pd` across all 46 files (68 import references) to match actual repository URL.
+
+### Added (prior)
 - **`--help` flag and usage output** — custom help with synopsis, subcommand table, stage descriptions, examples, and all flags. `--help` exits cleanly (code 0); bare `decompose` shows usage then errors.
 - **`decompose status [name]`** CLI command — shows stage completion for one or all decompositions. Shared `internal/status` package used by both CLI and MCP `get_status` tool.
 - **`decompose export <name>`** CLI command — exports decomposition as structured JSON to stdout. Parses Stage 4 task markdown files to extract task IDs, titles, file actions, dependencies, and acceptance criteria. 73 tasks parsed from the agent-parallel decomposition.

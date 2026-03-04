@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dusk-indust/decompose/internal/export"
-	"github.com/dusk-indust/decompose/internal/graph"
+	"github.com/onedusk/pd/internal/export"
+	"github.com/onedusk/pd/internal/graph"
 )
 
 func runDiagram(projectRoot string) error {

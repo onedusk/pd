@@ -3,7 +3,7 @@
 > Code-level starting points derived from the Design Pack (Stage 1).
 > All code in this document compiles with Go 1.26.0. This is NOT pseudocode.
 >
-> Module path: `github.com/dusk-indust/decompose`
+> Module path: `github.com/onedusk/pd`
 
 ---
 
@@ -655,7 +655,7 @@ package agent
 import (
 	"context"
 
-	"github.com/dusk-indust/decompose/internal/a2a"
+	"github.com/onedusk/pd/internal/a2a"
 )
 
 // Agent is the interface that all specialist agents implement.
@@ -693,7 +693,7 @@ const (
 ```go
 package mcptools
 
-import "github.com/dusk-indust/decompose/internal/graph"
+import "github.com/onedusk/pd/internal/graph"
 
 // --- MCP Tool Input Types ---
 // These structs define the JSON schema for each MCP tool's input.

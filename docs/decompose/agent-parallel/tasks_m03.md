@@ -12,7 +12,7 @@
   - **Outline:**
     - Copy from Stage 2 skeleton: `BuildGraphInput`, `BuildGraphOutput`, `QuerySymbolsInput`, `QuerySymbolsOutput`, `GetDependenciesInput`, `GetDependenciesOutput`, `AssessImpactInput`, `AssessImpactOutput`, `GetClustersInput`, `GetClustersOutput`
     - All input structs have `json` and `jsonschema` struct tags for MCP auto-schema generation
-    - Import `github.com/dusk-indust/decompose/internal/graph` for result types
+    - Import `github.com/onedusk/pd/internal/graph` for result types
   - **Acceptance:** Package compiles. All 5 input types and 5 output types are present. `jsonschema` tags exist on all required fields.
 
 ---

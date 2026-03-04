@@ -8,7 +8,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/dusk-indust/decompose/internal/graph"
+	"github.com/onedusk/pd/internal/graph"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

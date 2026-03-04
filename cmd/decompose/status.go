@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/dusk-indust/decompose/internal/status"
+	"github.com/onedusk/pd/internal/status"
 )
 
 func runStatus(projectRoot string, name string) error {
