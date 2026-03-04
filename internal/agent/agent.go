@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 
-	"github.com/dusk-indust/decompose/internal/a2a"
+	"github.com/onedusk/pd/internal/a2a"
 )
 
 // Agent is the interface that all specialist agents implement.
@@ -25,8 +25,9 @@ type Agent interface {
 type Role string
 
 const (
-	RoleResearch   Role = "research"
-	RoleSchema     Role = "schema"
-	RolePlanning   Role = "planning"
-	RoleTaskWriter Role = "task-writer"
+	RoleResearch     Role = "research"
+	RoleSchema       Role = "schema"
+	RolePlanning     Role = "planning"
+	RoleTaskWriter   Role = "task-writer"
+	RoleVerification Role = "verification"
 )

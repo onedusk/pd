@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dusk-indust/decompose/internal/export"
-	"github.com/dusk-indust/decompose/internal/graph"
+	"github.com/onedusk/pd/internal/export"
+	"github.com/onedusk/pd/internal/graph"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

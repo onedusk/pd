@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dusk-indust/decompose/internal/a2a"
-	"github.com/dusk-indust/decompose/internal/graph"
-	"github.com/dusk-indust/decompose/internal/mcptools"
+	"github.com/onedusk/pd/internal/a2a"
+	"github.com/onedusk/pd/internal/graph"
+	"github.com/onedusk/pd/internal/mcptools"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

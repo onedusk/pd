@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dusk-indust/decompose/internal/graph"
+	"github.com/onedusk/pd/internal/graph"
 )
 
 // runAugment queries the persistent graph index and prints context for the

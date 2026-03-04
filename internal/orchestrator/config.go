@@ -64,6 +64,9 @@ type Config struct {
 	// SingleAgent forces single-agent mode regardless of available capabilities.
 	SingleAgent bool
 
+	// SkipVerification disables the post-stage verification step.
+	SkipVerification bool
+
 	// Verbose enables agent-level progress output.
 	Verbose bool
 }

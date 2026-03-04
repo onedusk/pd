@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/dusk-indust/decompose/internal/a2a"
+	"github.com/onedusk/pd/internal/a2a"
 )
 
 // TaskWriterAgent writes detailed task specifications and validates

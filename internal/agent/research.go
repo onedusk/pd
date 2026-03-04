@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dusk-indust/decompose/internal/a2a"
+	"github.com/onedusk/pd/internal/a2a"
 )
 
 // skipDirs is the set of directory names to skip when walking a project tree.

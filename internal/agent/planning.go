@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dusk-indust/decompose/internal/a2a"
-	"github.com/dusk-indust/decompose/internal/mcptools"
+	"github.com/onedusk/pd/internal/a2a"
+	"github.com/onedusk/pd/internal/mcptools"
 )
 
 // PlanningAgent is a specialist agent that builds code graphs, analyzes

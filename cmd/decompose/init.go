@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dusk-indust/decompose/internal/skilldata"
+	"github.com/onedusk/pd/internal/skilldata"
 )
 
 // mcpConfig represents the structure of a .mcp.json file.

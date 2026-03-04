@@ -2,7 +2,7 @@
 
 > Master build plan derived from the Design Pack (Stage 1) and Implementation Skeletons (Stage 2).
 >
-> Module: `github.com/dusk-indust/decompose`
+> Module: `github.com/onedusk/pd`
 
 ---
 
@@ -134,7 +134,7 @@ M1: Project Scaffolding + A2A Types
 ## Target Directory Tree
 
 ```
-github.com/dusk-indust/decompose/
+github.com/onedusk/pd/
 │
 ├── go.mod                                        CREATE (M1)
 ├── go.sum                                        CREATE (M1)

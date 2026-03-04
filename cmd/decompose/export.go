@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dusk-indust/decompose/internal/export"
+	"github.com/onedusk/pd/internal/export"
 )
 
 func runExport(projectRoot string, args []string) error {

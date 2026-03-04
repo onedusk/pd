@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dusk-indust/decompose/internal/a2a"
+	"github.com/onedusk/pd/internal/a2a"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

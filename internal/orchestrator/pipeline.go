@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dusk-indust/decompose/internal/a2a"
+	"github.com/onedusk/pd/internal/a2a"
 )
 
 // Compile-time interface checks.
@@ -174,11 +174,57 @@ func (p *Pipeline) executeFullMode(ctx context.Context, cfg Config, stage Stage,
 		return nil, fmt.Errorf("pipeline: write output for stage %d (%s): %w", stage, stage, err)
 	}
 
-	return &StageResult{
+	result := &StageResult{
 		Stage:     stage,
 		FilePaths: []string{outPath},
 		Sections:  sections,
-	}, nil
+	}
+
+	// Verify the stage output with "fresh eyes".
+	if !cfg.SkipVerification {
+		p.progress.Emit(ProgressEvent{
+			Stage:   stage,
+			Section: "verification",
+			Status:  ProgressVerifying,
+		})
+
+		report := p.verifyStageOutput(stage, merged, inputs)
+		result.VerificationReport = report
+
+		if !report.Passed {
+			// Write verification report alongside stage output.
+			reportPath := outPath + ".verification.md"
+			if writeErr := writeOutputFile(reportPath, report.Markdown()); writeErr != nil {
+				log.Printf("WARNING: failed to write verification report: %v", writeErr)
+			} else {
+				result.FilePaths = append(result.FilePaths, reportPath)
+			}
+
+			for _, f := range report.Findings {
+				if f.Severity == SeverityCritical {
+					p.progress.Emit(ProgressEvent{
+						Stage:   stage,
+						Section: "verification",
+						Status:  ProgressFailed,
+						Message: f.Description,
+					})
+				}
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// ---------------------------------------------------------------------------
+// Verification
+// ---------------------------------------------------------------------------
+
+// verifyStageOutput runs verification rules against the stage output.
+// It enforces "fresh eyes" isolation by receiving only the merged content
+// and prior stage results — not the producing agent's context.
+func (p *Pipeline) verifyStageOutput(stage Stage, content string, priorInputs []StageResult) *VerificationReport {
+	return RunLocalVerification(stage, content, priorInputs)
 }
 
 // ---------------------------------------------------------------------------

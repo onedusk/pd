@@ -67,6 +67,11 @@ func (r *Router) RouteRange(ctx context.Context, from, to Stage) ([]StageResult,
 			return results, fmt.Errorf("router: stage %d (%s) failed: %w", stage, stage, err)
 		}
 		results = append(results, *result)
+
+		// Block pipeline progression if verification found critical issues.
+		if result.VerificationReport != nil && result.VerificationReport.HasCritical() {
+			return results, fmt.Errorf("router: stage %d (%s) failed verification with critical findings", stage, stage)
+		}
 	}
 
 	return results, nil

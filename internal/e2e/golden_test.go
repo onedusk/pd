@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dusk-indust/decompose/internal/orchestrator"
+	"github.com/onedusk/pd/internal/orchestrator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

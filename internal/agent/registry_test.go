@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dusk-indust/decompose/internal/a2a"
+	"github.com/onedusk/pd/internal/a2a"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +20,7 @@ import (
 // --------------------------------------------------------------------------
 
 func TestRegistry_SpawnEachRole(t *testing.T) {
-	roles := []Role{RoleResearch, RoleSchema, RolePlanning, RoleTaskWriter}
+	roles := []Role{RoleResearch, RoleSchema, RolePlanning, RoleTaskWriter, RoleVerification}
 
 	for _, role := range roles {
 		role := role // capture
@@ -61,9 +61,9 @@ func TestRegistry_SpawnAll(t *testing.T) {
 
 	// Find an available base port to avoid collisions.
 	basePort := findAvailablePort(t)
-	// Release 3 more sequential ports by verifying they are free.
+	// Release 4 more sequential ports by verifying they are free.
 	// In practice, high port ranges rarely collide during tests.
-	for i := 1; i <= 3; i++ {
+	for i := 1; i <= 4; i++ {
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", basePort+i))
 		if err != nil {
 			// Port in use; shift the base port.
@@ -76,7 +76,7 @@ func TestRegistry_SpawnAll(t *testing.T) {
 
 	agents, err := reg.SpawnAll(context.Background(), basePort)
 	require.NoError(t, err)
-	assert.Len(t, agents, 4, "SpawnAll should create 4 agents")
+	assert.Len(t, agents, 5, "SpawnAll should create 5 agents")
 
 	defer func() {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -89,7 +89,7 @@ func TestRegistry_SpawnAll(t *testing.T) {
 
 	// Verify each agent card is discoverable via HTTP.
 	client := &http.Client{Timeout: 2 * time.Second}
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 5; i++ {
 		url := fmt.Sprintf("http://127.0.0.1:%d/.well-known/agent-card.json", basePort+i)
 		resp, err := client.Get(url)
 		require.NoError(t, err, "GET %s should succeed", url)
@@ -108,7 +108,7 @@ func TestRegistry_SpawnAll(t *testing.T) {
 	}
 
 	// Verify the expected agent order (deterministic: research, schema, planning, task-writer).
-	expectedNames := []string{"research-agent", "schema-agent", "planning-agent", "task-writer-agent"}
+	expectedNames := []string{"research-agent", "schema-agent", "planning-agent", "task-writer-agent", "verification-agent"}
 	for i, ag := range agents {
 		assert.Equal(t, expectedNames[i], ag.Card().Name,
 			"agent at index %d should be %s", i, expectedNames[i])
@@ -119,7 +119,7 @@ func TestRegistry_StopAll(t *testing.T) {
 	reg := NewRegistry()
 
 	basePort := findAvailablePort(t)
-	for i := 1; i <= 3; i++ {
+	for i := 1; i <= 4; i++ {
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", basePort+i))
 		if err != nil {
 			basePort = findAvailablePort(t)
@@ -160,7 +160,7 @@ func TestRegistry_SpawnAll_EmptyAfterStop(t *testing.T) {
 	reg := NewRegistry()
 
 	basePort := findAvailablePort(t)
-	for i := 1; i <= 3; i++ {
+	for i := 1; i <= 4; i++ {
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", basePort+i))
 		if err != nil {
 			basePort = findAvailablePort(t)
@@ -183,7 +183,7 @@ func TestRegistry_SpawnAll_EmptyAfterStop(t *testing.T) {
 	// After StopAll, a second SpawnAll on different ports should also work,
 	// demonstrating that the registry clears its spawned list.
 	basePort2 := findAvailablePort(t)
-	for i := 1; i <= 3; i++ {
+	for i := 1; i <= 4; i++ {
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", basePort2+i))
 		if err != nil {
 			basePort2 = findAvailablePort(t)
@@ -195,7 +195,7 @@ func TestRegistry_SpawnAll_EmptyAfterStop(t *testing.T) {
 
 	agents2, err := reg.SpawnAll(context.Background(), basePort2)
 	require.NoError(t, err)
-	assert.Len(t, agents2, 4)
+	assert.Len(t, agents2, 5)
 
 	defer func() {
 		stopCtx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)

@@ -29,9 +29,10 @@ func (s Stage) String() string {
 
 // StageResult holds the output of a completed stage.
 type StageResult struct {
-	Stage     Stage
-	FilePaths []string // output files written
-	Sections  []Section
+	Stage              Stage
+	FilePaths          []string             // output files written
+	Sections           []Section
+	VerificationReport *VerificationReport  `json:"verificationReport,omitempty"`
 }
 
 // Section is a named chunk of stage output produced by one agent.
@@ -53,10 +54,11 @@ type ProgressEvent struct {
 type ProgressStatus string
 
 const (
-	ProgressPending  ProgressStatus = "pending"
-	ProgressWorking  ProgressStatus = "working"
-	ProgressComplete ProgressStatus = "complete"
-	ProgressFailed   ProgressStatus = "failed"
+	ProgressPending   ProgressStatus = "pending"
+	ProgressWorking   ProgressStatus = "working"
+	ProgressComplete  ProgressStatus = "complete"
+	ProgressFailed    ProgressStatus = "failed"
+	ProgressVerifying ProgressStatus = "verifying"
 )
 
 // Orchestrator coordinates the decomposition pipeline.
