@@ -5,12 +5,6 @@ description: |
   This skill should be used when a user wants to decompose a project idea into an executable
   implementation plan, restructure an existing project, or run any stage of the pipeline:
   dev standards, design pack, code skeletons, task index, or task specifications.
-hooks:
-  PreToolUse:
-    - matcher: "Read|Write|Edit|Glob|Grep"
-      hooks:
-        - type: command
-          command: ".claude/hooks/decompose-tool-guard.sh"
 ---
 
 # Progressive Decomposition

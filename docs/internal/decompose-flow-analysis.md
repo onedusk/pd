@@ -22,8 +22,8 @@ User types /decompose ai-model-abstraction
 │  bin/decompose           │     │  "command": "/abs/path"  │
 │  --serve-mcp             │     │  "args": [--project-root │
 │                          │     │    /path, --serve-mcp]   │
-│  11 tools registered:    │     └─────────────────────────┘
-│  - 6 decompose tools     │
+│  12 tools registered:    │     └─────────────────────────┘
+│  - 7 decompose tools     │
 │  - 5 code intel tools    │
 └────────┬────────────────┘
          │ build_graph persists index
@@ -54,7 +54,7 @@ User types /decompose ai-model-abstraction
 | CLI entry | `cmd/decompose/main.go` | Flag parsing, MCP server startup, subcommand routing |
 | Init command | `cmd/decompose/init.go` | Installs skill + hooks + config into target project |
 | Augment command | `cmd/decompose/augment.go` | Queries persistent graph, prints markdown context |
-| MCP server | `internal/mcptools/unified_server.go` | Registers 11 MCP tools on a single stdio server |
+| MCP server | `internal/mcptools/unified_server.go` | Registers 12 MCP tools on a single stdio server |
 | Code intel handlers | `internal/mcptools/handlers.go` | BuildGraph, QuerySymbols, GetDependencies, etc. |
 | Decompose handlers | `internal/mcptools/decompose_handlers.go` | RunStage, GetStatus, WriteStage, etc. |
 | KuzuDB store | `internal/graph/kuzustore.go` | NewMemStore (in-memory), NewKuzuFileStore (persistent) |
@@ -105,7 +105,7 @@ $ ./bin/decompose --project-root /path/to/dusk --force init
 7. **Merge CLAUDE.md** (`init.go:150-153`) — calls `mergeClaudeMD()`:
    - Appends decompose block between `<!-- decompose:start -->` / `<!-- decompose:end -->` markers
    - If markers already exist, replaces the block (idempotent)
-   - Lists all 11 MCP tools with descriptions
+   - Lists all 12 MCP tools with descriptions
 8. **Add .gitignore entry** (`init.go:157-158`) — appends `.decompose/` if not already present
 
 ---
@@ -166,11 +166,12 @@ if flags.ServeMCP {
 | 4 | `write_stage` | `decomposeSvc.WriteStage` | Hybrid |
 | 5 | `get_stage_context` | `decomposeSvc.GetStageContext` | Hybrid |
 | 6 | `set_input` | `decomposeSvc.SetInput` | Hybrid |
-| 7 | `build_graph` | `codeintel.BuildGraph` | Code Intel |
-| 8 | `query_symbols` | `codeintel.QuerySymbols` | Code Intel |
-| 9 | `get_dependencies` | `codeintel.GetDependencies` | Code Intel |
-| 10 | `assess_impact` | `codeintel.AssessImpact` | Code Intel |
-| 11 | `get_clusters` | `codeintel.GetClusters` | Code Intel |
+| 7 | `run_review` | `decomposeSvc.RunReview` | Review |
+| 8 | `build_graph` | `codeintel.BuildGraph` | Code Intel |
+| 9 | `query_symbols` | `codeintel.QuerySymbols` | Code Intel |
+| 10 | `get_dependencies` | `codeintel.GetDependencies` | Code Intel |
+| 11 | `assess_impact` | `codeintel.AssessImpact` | Code Intel |
+| 12 | `get_clusters` | `codeintel.GetClusters` | Code Intel |
 
 The MCP server runs on stdio transport (`server.Run(ctx, &mcp.StdioTransport{})`) and blocks until stdin is closed or the context is cancelled.
 
