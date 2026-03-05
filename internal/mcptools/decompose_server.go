@@ -101,3 +101,30 @@ type SetInputOutput struct {
 	Status       string `json:"status"`
 	ContentBytes int    `json:"contentBytes"`
 }
+
+// --- Review tool types ---
+
+// RunReviewInput is the input for the run_review MCP tool.
+type RunReviewInput struct {
+	Name string `json:"name" jsonschema:"decomposition name (kebab-case)"`
+}
+
+// RunReviewOutput is the result of the run_review MCP tool.
+type RunReviewOutput struct {
+	FindingsFile  string                `json:"findingsFile"`
+	TotalFindings int                   `json:"totalFindings"`
+	Mismatches    int                   `json:"mismatches"`
+	Checks        []RunReviewCheckStats `json:"checks"`
+	Status        string                `json:"status"` // "completed" or "failed"
+	Message       string                `json:"message,omitempty"`
+}
+
+// RunReviewCheckStats summarises one check in the review output.
+type RunReviewCheckStats struct {
+	Check      int    `json:"check"`
+	Name       string `json:"name"`
+	Total      int    `json:"total"`
+	Mismatches int    `json:"mismatches"`
+	Omissions  int    `json:"omissions"`
+	Stale      int    `json:"stale"`
+}
