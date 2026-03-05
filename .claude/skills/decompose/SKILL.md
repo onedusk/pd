@@ -80,6 +80,9 @@ Parse arguments as: `/decompose [name] [stage|command]`
 | `<name> 4` | Run Stage 4 for the named decomposition. |
 | `<name> status` | Report stage completion for that specific decomposition. |
 | `<name> next` | Run the next incomplete stage for that decomposition. |
+| `<name> review` | Run the review phase (5 mechanical codebase-plan cross-reference checks). |
+| `<name> review-interpret` | Submit interpretive triage to A2A agent, or print instructions for manual delegation. |
+| `<name> implement` | Fan out Claude Code sessions per milestone, respecting dependency DAG. |
 | `status` | Overview of ALL decompositions — list each with its completion state. |
 
 If a stage number (1-4) is provided without a name, ask the user which decomposition to run it against. If only one decomposition exists, confirm and use that one.
@@ -99,6 +102,7 @@ If a stage number (1-4) is provided without a name, ask the user which decomposi
 | `write_stage` | Validate, merge, and write stage content (with coherence checking) |
 | `set_input` | Store a high-level input file/content to seed the pipeline |
 | `run_stage` | Execute a stage via the binary pipeline (produces scaffolds in basic mode) |
+| `run_review` | Run all 5 mechanical review checks comparing plan against codebase. Produces structured findings (MISMATCH/OMISSION/STALE). Run after Stage 4, before implementing. |
 
 #### Code Intelligence Tools
 | Tool | Purpose |
@@ -251,6 +255,27 @@ Workflow:
 6. Reference Stage 2 skeleton code where applicable (e.g., "copy the `User` model from Stage 2").
 
 **Done when:** Every file in Stage 3's directory tree has at least one task. Every task has acceptance criteria. Cross-milestone dependencies reference specific task IDs.
+
+### Review Phase: Codebase-Plan Cross-Reference
+
+**Output:** `docs/decompose/<name>/review-findings.md`
+**Prerequisites:** Stages 1-4 must be complete
+
+The review phase sits between Stage 4 completion and implementation start. It runs 5 mechanical checks comparing the decomposition plan against the actual codebase:
+
+1. **File existence** — validates CREATE/MODIFY/DELETE actions against filesystem state
+2. **Symbol verification** — confirms that symbols referenced in task outlines exist in the expected files
+3. **Dependency completeness** — finds files that import MODIFY targets but aren't in the plan
+4. **Cross-milestone consistency** — detects conflicting actions and ordering issues across milestones
+5. **Coverage gap scan** — identifies files within scope that may be affected but aren't planned
+
+Workflow:
+1. Call `run_review` with the decomposition name (or run `decompose review <name>` from CLI).
+2. Review the findings in `review-findings.md`. Findings are classified as MISMATCH (must fix), OMISSION (evaluate), or STALE (update plan).
+3. Resolve any MISMATCH findings by updating Stage 3/4 files before implementing.
+4. For interpretive triage of false positives (especially Check 5), run `decompose review-interpret <name>` to delegate to an A2A agent or follow the printed instructions in a fresh session.
+
+**Done when:** No MISMATCH findings remain. OMISSION findings have been triaged (confirmed or reclassified as OK).
 
 ## Methodology Reference
 
