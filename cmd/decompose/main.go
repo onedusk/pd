@@ -32,6 +32,7 @@ type cliFlags struct {
 	Verbose          bool
 	ServeMCP         bool
 	Force            bool
+	SkipReview       bool
 	Version          bool
 }
 
@@ -60,6 +61,7 @@ func run(args []string) error {
 	fs.StringVar(&flags.ReviewMode, "review-mode", "cli", "review strategy for implement command: cli, pr, file")
 	fs.IntVar(&flags.MaxConcurrent, "max-concurrent", 3, "max parallel Claude Code sessions for implement command")
 	fs.BoolVar(&flags.Force, "force", false, "overwrite existing files during init")
+	fs.BoolVar(&flags.SkipReview, "skip-review", false, "suppress review warnings when implementing")
 	fs.BoolVar(&flags.Version, "version", false, "print version and exit")
 
 	fs.Usage = func() { printUsage(fs) }
@@ -151,6 +153,18 @@ func run(args []string) error {
 			pattern = strings.Join(positional[1:], " ")
 		}
 		return runAugment(projectRoot, pattern)
+	}
+	if len(positional) > 0 && positional[0] == "review" {
+		if len(positional) < 2 {
+			return fmt.Errorf("usage: decompose review <name>")
+		}
+		return runReview(ctx, projectRoot, positional[1], flags)
+	}
+	if len(positional) > 0 && positional[0] == "review-interpret" {
+		if len(positional) < 2 {
+			return fmt.Errorf("usage: decompose review-interpret <name>")
+		}
+		return runReviewInterpret(ctx, projectRoot, positional[1], flags)
 	}
 	if len(positional) > 0 && positional[0] == "implement" {
 		if len(positional) < 2 {
@@ -282,6 +296,9 @@ func runImplement(ctx context.Context, projectRoot, name string, flags cliFlags)
 		}
 	}
 
+	// Check review status (non-blocking warning).
+	checkReviewBeforeImplement(projectRoot, name, flags.SkipReview)
+
 	// Read and parse Stage 3 milestone dependencies.
 	stage3Path := filepath.Join(outputDir, fmt.Sprintf("stage-3-%s.md", orchestrator.StageTaskIndex.String()))
 	stage3Content, err := os.ReadFile(stage3Path)
@@ -384,6 +401,8 @@ func printUsage(fs *flag.FlagSet) {
 	fmt.Fprintf(w, "decompose v%s — spec-driven development pipeline\n\n", version)
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintln(w, "  decompose [flags] <name> [stage]    Run pipeline or single stage")
+	fmt.Fprintln(w, "  decompose [flags] review <name>     Run review phase (codebase-plan cross-reference)")
+	fmt.Fprintln(w, "  decompose [flags] review-interpret <name>  Interpretive triage of review findings")
 	fmt.Fprintln(w, "  decompose [flags] implement <name>  Implement via Claude Code sessions")
 	fmt.Fprintln(w, "  decompose [flags] init              Install skill, hooks, and MCP config")
 	fmt.Fprintln(w, "  decompose [flags] status [name]     Show decomposition status")

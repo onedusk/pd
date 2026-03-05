@@ -5,6 +5,23 @@ All notable changes to the progressive-decomposition project.
 ## [Unreleased]
 
 ### Added
+- **Review phase** (`internal/review/`) — two-pass verification system between Stage 4 completion and implementation start. Go binary runs 5 mechanical checks (producer), then delegates an interpretive triage pass to a separate agent session via A2A (consumer).
+- **5 mechanical review checks:**
+  - **Check 1: File existence** (`check_existence.go`) — `os.Stat` validation. CREATE+exists→MISMATCH, MODIFY+missing→MISMATCH, DELETE+missing→STALE.
+  - **Check 2: Symbol verification** (`check_symbols.go`) — validates symbol refs from task outlines against codebase via graph `QuerySymbols` or file-read fallback. Relocated→STALE, missing→MISMATCH.
+  - **Check 3: Dependency completeness** (`check_deps.go`) — finds dependents of MODIFY targets via `GetDependencies(DirectionUpstream)` or import-regex filesystem walk. Unlisted dependent→OMISSION. Direction semantics gated by `TestDirectionSemantics`.
+  - **Check 4: Cross-milestone consistency** (`check_crossms.go`) — detects conflicting actions (MODIFY-before-CREATE, CREATE+DELETE), overlapping symbol modifications across milestones. Uses `orchestrator.ParseMilestones` for DAG ordering. Semantic conflicts deferred to A2A interpretive pass.
+  - **Check 5: Coverage gap scan** (`check_coverage.go`) — scope-boundary filesystem walk + graph clusters/impact analysis. High recall, moderate precision — interpretive session triages false positives.
+- **Stage 3 directory tree parser** (`parse_stage3.go`) — handles both box-drawing characters (`├──`, `└──`, `│`) and plain indentation. Extracts file paths + `CREATE/MODIFY/DELETE (milestone)` annotations. Multiple actions per line supported.
+- **Stage 4 task spec parser** (`parse_stage4.go`) — parses `tasks_mNN.md` files. Extracts task IDs (`T-MM.SS`), file+action, depends-on, symbol refs from outlines (backtick identifiers + PascalCase names).
+- **Review report formatter** (`report.go`) — markdown output with summary table, per-check findings sections (`R-N.NN [CLASS] \`path\`: description`), and `<!-- INTERPRETIVE PASS NEEDED -->` stub for A2A consumer. `ParseMismatchCount` for implement warning.
+- **`decompose review <name>`** CLI command — verifies stages 1-4 complete, opens graph store if available, runs all 5 checks, writes `review-findings.md`, prints summary to stderr.
+- **`decompose review-interpret <name>`** CLI command — discovers A2A agents with `review-interpret` skill, submits interpretive triage task with findings + context artifacts. Graceful degradation: A2A available→submit task, not available→print instructions for manual delegation.
+- **A2A review-interpret client** (`a2a_interpret.go`) — `SubmitInterpretTask` discovers agents, validates skill, sends `SendMessage` with findings + Stage 1/3/4 files as message parts. `PollInterpretTask` polls until terminal state.
+- **`run_review` MCP tool** — single tool running all 5 checks. Registered in unified server alongside decompose tools. Uses `CodeIntelService` graph when available via `SetCodeIntel` method.
+- **Two-level implement warning** — `runImplement` checks review state: missing `review-findings.md`→warn; existing with mismatches→warn louder. `--skip-review` flag suppresses.
+- **12 review tests** — `TestDirectionSemantics` (gate test), parser tests (tree-chars + plain indent), check tests (file existence, cross-milestone), A2A client tests (mock server, skill validation, error paths).
+
 - **Verification agent + pipeline integration** — "fresh eyes" post-stage verification that catches gaps before they propagate. `VerificationReport` with severity levels (critical/warning/info), 50+ rule-based checks across all 5 stages plus cross-stage coherence rules. Critical findings block pipeline progression in `RouteRange`. Runs automatically after each stage; skip with `--skip-verification`.
 - **Verification agent** (`internal/agent/verification.go`) — A2A-compatible agent with `verify-stage` and `verify-cross-stage` skills. Receives only stage output content (never producing agent's context) for "fresh eyes" isolation. Registered as `RoleVerification` in agent registry.
 - **Milestone scheduler** (`internal/orchestrator/scheduler.go`) — dependency-aware DAG scheduler using Kahn's algorithm for cycle detection. Thread-safe with `sync.Mutex`. `Ready()`, `MarkRunning()`, `MarkCompleted()`, `MarkFailed()`, `AllCompleted()`. `ParseMilestones()` extracts dependency relationships from Stage 3 markdown.

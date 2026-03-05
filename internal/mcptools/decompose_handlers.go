@@ -8,7 +8,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/onedusk/pd/internal/graph"
 	"github.com/onedusk/pd/internal/orchestrator"
+	"github.com/onedusk/pd/internal/review"
 	"github.com/onedusk/pd/internal/skilldata"
 	"github.com/onedusk/pd/internal/status"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -17,8 +19,9 @@ import (
 // DecomposeService handles MCP tool calls for the decompose server mode.
 // It wraps an Orchestrator to execute pipeline stages and query status.
 type DecomposeService struct {
-	pipeline orchestrator.Orchestrator
-	cfg      orchestrator.Config
+	pipeline  orchestrator.Orchestrator
+	cfg       orchestrator.Config
+	codeintel *CodeIntelService
 
 	mu           sync.RWMutex
 	inputContent map[string]string // decomposition name → input content
@@ -31,6 +34,11 @@ func NewDecomposeService(pipeline orchestrator.Orchestrator, cfg orchestrator.Co
 		cfg:          cfg,
 		inputContent: make(map[string]string),
 	}
+}
+
+// SetCodeIntel attaches a CodeIntelService so RunReview can use graph-based checks.
+func (s *DecomposeService) SetCodeIntel(ci *CodeIntelService) {
+	s.codeintel = ci
 }
 
 // RunStage executes a single pipeline stage and returns the files written.
@@ -322,5 +330,83 @@ func (s *DecomposeService) SetInput(
 	return nil, SetInputOutput{
 		Status:       "completed",
 		ContentBytes: len(content),
+	}, nil
+}
+
+// RunReview executes all 5 mechanical review checks and writes the findings file.
+func (s *DecomposeService) RunReview(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	input RunReviewInput,
+) (*mcp.CallToolResult, RunReviewOutput, error) {
+	name := input.Name
+	if name == "" {
+		name = s.cfg.Name
+	}
+	if name == "" {
+		return nil, RunReviewOutput{Status: "failed", Message: "name is required"}, fmt.Errorf("decomposition name is required")
+	}
+
+	outputDir := filepath.Join(s.cfg.ProjectRoot, "docs", "decompose", name)
+
+	// Build GraphProvider from CodeIntelService if available.
+	var gp review.GraphProvider
+	if s.codeintel != nil {
+		gp = review.NewStoreGraphProvider(s.codeintel.store)
+	} else {
+		// Try to open file store.
+		graphDir := filepath.Join(s.cfg.ProjectRoot, ".decompose", "graph")
+		if _, err := os.Stat(graphDir); err == nil {
+			store, err := graph.NewKuzuFileStore(graphDir)
+			if err == nil {
+				defer store.Close()
+				gp = review.NewStoreGraphProvider(store)
+			}
+		}
+	}
+
+	cfg := review.ReviewConfig{
+		ProjectRoot: s.cfg.ProjectRoot,
+		DecompName:  name,
+		DecompDir:   outputDir,
+		Graph:       gp,
+	}
+
+	report, err := review.RunReview(ctx, cfg)
+	if err != nil {
+		return nil, RunReviewOutput{
+			Status:  "failed",
+			Message: err.Error(),
+		}, nil
+	}
+
+	// Write findings file.
+	findingsPath := filepath.Join(outputDir, "review-findings.md")
+	if err := os.WriteFile(findingsPath, []byte(report.Markdown()), 0o644); err != nil {
+		return nil, RunReviewOutput{
+			Status:  "failed",
+			Message: fmt.Sprintf("write findings: %v", err),
+		}, nil
+	}
+
+	// Build check stats for output.
+	checks := make([]RunReviewCheckStats, len(report.Checks))
+	for i, cs := range report.Checks {
+		checks[i] = RunReviewCheckStats{
+			Check:      cs.Check,
+			Name:       cs.Name,
+			Total:      cs.Total,
+			Mismatches: cs.Mismatches,
+			Omissions:  cs.Omissions,
+			Stale:      cs.Stale,
+		}
+	}
+
+	return nil, RunReviewOutput{
+		FindingsFile:  findingsPath,
+		TotalFindings: len(report.Findings),
+		Mismatches:    report.MismatchCount(),
+		Checks:        checks,
+		Status:        "completed",
 	}, nil
 }

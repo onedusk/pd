@@ -14,6 +14,9 @@ import (
 // assess_impact, get_clusters).
 func NewUnifiedMCPServer(pipeline orchestrator.Orchestrator, cfg orchestrator.Config, codeintel *CodeIntelService) *mcp.Server {
 	decomposeSvc := NewDecomposeService(pipeline, cfg)
+	if codeintel != nil {
+		decomposeSvc.SetCodeIntel(codeintel)
+	}
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "decompose",
@@ -53,6 +56,13 @@ func NewUnifiedMCPServer(pipeline orchestrator.Orchestrator, cfg orchestrator.Co
 		Name:        "set_input",
 		Description: "Store a high-level input file or content for a decomposition. The content is included in get_stage_context output for Stage 1.",
 	}, decomposeSvc.SetInput)
+
+	// --- Review tools ---
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "run_review",
+		Description: "Run all 5 mechanical review checks comparing decomposition plan (Stage 3 directory tree + Stage 4 task specs) against the codebase. Produces structured findings classified as MISMATCH, OMISSION, or STALE, and writes review-findings.md. Run this after all stages are complete, before implementing.",
+	}, decomposeSvc.RunReview)
 
 	// --- Code intelligence tools ---
 
