@@ -140,7 +140,7 @@ Include:
 
 Navigation model (tabs, stack, drawer, etc.), screen inventory (every screen with a one-sentence purpose), and wireframes for the 3–5 most important screens.
 
-ASCII wireframes are sufficient. The goal is structural clarity — what information appears where — not visual design.
+Mermaid block diagrams or simple markdown tables are sufficient for wireframes. The goal is structural clarity — what information appears where — not visual design.
 
 **6. Features**
 
@@ -214,7 +214,7 @@ Ordered milestone list — names and sequence only. Details go in Stages 3–4. 
 - **Research first, write second.** Actually read the API docs for the frameworks you plan to use.
 - **Decision records are produced during design, not after.** When you make a choice, write it down immediately.
 - **Total length:** 10–30 pages depending on project complexity. If it's shorter, you probably skipped research. If it's longer, you're over-specifying.
-- **ASCII wireframes are fine.** The goal is structural clarity, not visual fidelity.
+- **Mermaid block diagrams or markdown tables are fine for wireframes.** The goal is structural clarity, not visual fidelity.
 
 ### Research Protocol
 
@@ -327,14 +327,16 @@ Milestones listed with task count and completion tracking.
 
 **2. Milestone dependency graph**
 
-ASCII diagram showing which milestones depend on which, and which can run in parallel.
+Mermaid diagram showing which milestones depend on which, and which can run in parallel.
 
-```
-M1 ──► M2 ──┬──► M3 (parallel with M4)
-             │
-             ├──► M4
-             │         \
-             └──► M5    ──► M6
+```mermaid
+graph LR
+    M1 --> M2
+    M2 --> M3
+    M2 --> M4
+    M2 --> M5
+    M4 --> M6
+    M5 --> M6
 ```
 
 Identify the **critical path** (longest sequential chain) and **parallelizable work**.

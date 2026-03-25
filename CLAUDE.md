@@ -4,14 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repository Is
 
-Progressive Decomposition is a **methodology repository**, not a software application. It defines a 5-stage spec-driven development pipeline for turning project ideas into executable task lists: **idea → specs → code shapes → milestone plan → task specs**. There is no build system, no test suite, and no application code to run.
+Progressive Decomposition is a **methodology repository** with a supporting Go binary. It defines a 5-stage spec-driven development pipeline for turning project ideas into executable task lists: **idea -> specs -> code shapes -> milestone plan -> task specs**.
 
 The repository contains:
-- `process-guide.md` — the full methodology reference (primary source of truth)
-- `templates/` — fill-in stage templates (stages 0–4)
-- `examples/` — real project excerpts illustrating each stage
-- `skill/decompose/` — Claude Code skill that implements the pipeline interactively
-- `docs/internal/` — internal design documents for future evolution (agent-parallel architecture)
+- `process-guide.md` -- the full methodology reference (primary source of truth)
+- `templates/` -- fill-in stage templates (stages 0-4)
+- `examples/` -- real project excerpts illustrating each stage
+- `.claude/skills/decompose/` -- Claude Code skill that implements the pipeline interactively
+- `cmd/decompose/` + `internal/` -- Go binary providing code intelligence (tree-sitter parsing, dependency graphs, impact analysis) and mechanical review checks
+- `docs/internal/` -- architecture assessment, validated flow documentation, recommendations, evaluation framework
 
 ## The 5-Stage Pipeline
 
@@ -27,30 +28,64 @@ Stages 0 and 2 are the differentiators vs. other SDD tools. Stage 2 forces desig
 
 ## The `/decompose` Skill
 
-The skill at `skill/decompose/SKILL.md` (mirrored to `.claude/skills/decompose/SKILL.md`) is the interactive entry point. It routes arguments as:
+The skill at `.claude/skills/decompose/SKILL.md` is the interactive entry point. It routes arguments as:
 
 ```
-/decompose                    → list existing decompositions
-/decompose 0                  → run Stage 0 (shared, no name needed)
-/decompose <name>             → detect state, recommend next stage
-/decompose <name> <1-4>       → run specific stage
-/decompose <name> next        → run next incomplete stage
-/decompose status             → overview of all decompositions
+/decompose                    -> list existing decompositions
+/decompose 0                  -> run Stage 0 (shared, no name needed)
+/decompose <name>             -> detect state, recommend next stage
+/decompose <name> <1-4>       -> run specific stage
+/decompose <name> next        -> run next incomplete stage
+/decompose status             -> overview of all decompositions
 ```
 
-Output convention: Stage 0 goes to `docs/decompose/stage-0-development-standards.md` (shared root). Stages 1–4 go to `docs/decompose/<name>/`. Task files are `tasks_m{NN}.md`. Task IDs follow `T-{MM}.{SS}` format.
+Output convention: Stage 0 goes to `docs/decompose/stage-0-development-standards.md` (shared root). Stages 1-4 go to `docs/decompose/<name>/`. Task files are `tasks_m{NN}.md`. Task IDs follow `T-{MM}.{SS}` format.
+
+## The Go Binary
+
+The binary at `cmd/decompose/` provides two categories of functionality:
+
+**Code intelligence** -- tree-sitter parsing, KuzuDB graph storage, dependency traversal, clustering, and impact analysis. These are MCP tools (`build_graph`, `query_symbols`, `get_dependencies`, `assess_impact`, `get_clusters`) that provide structural data about a codebase that cannot be obtained efficiently by reading files one at a time. Value scales with codebase size.
+
+**Mechanical review** -- 5 checks comparing a decomposition plan against the actual codebase: file existence, symbol verification, dependency completeness, cross-milestone consistency, coverage gaps. Available as `run_review` MCP tool or `decompose review <name>` CLI command.
+
+The binary is optional. The skill and methodology work without it. Code intelligence becomes increasingly valuable on larger codebases (hundreds or thousands of files).
+
+### Building
+
+```
+make build          # produces bin/decompose (requires CGO for tree-sitter + KuzuDB)
+make test           # run tests
+```
+
+### Running as MCP Server
+
+The binary runs as a stdio MCP server. Configure it in `.claude/mcp.json` or equivalent:
+
+```json
+{
+  "mcpServers": {
+    "decompose": {
+      "command": "./bin/decompose",
+      "args": ["mcp"]
+    }
+  }
+}
+```
 
 ## Key Conventions
 
-- Decomposition names use **kebab-case** (2–3 words): `auth-system`, `v2-redesign`
+- Decomposition names use **kebab-case** (2-3 words): `auth-system`, `v2-redesign`
 - File actions in task specs are always uppercase: **CREATE**, **MODIFY**, **DELETE**
-- Templates in `skill/decompose/assets/templates/` are the canonical versions; `templates/` at root are for manual use
+- Templates in `.claude/skills/decompose/assets/templates/` are the canonical versions; `templates/` at root are for manual use
 - The skill reads `references/process-guide.md` (bundled copy) for methodology details
+- Review checkpoints happen between every stage, not just after Stage 4 -- each stage is reviewed against the codebase before proceeding to the next
+- During implementation: run `/review` after each task, after each milestone, and once across the full scope when all milestones are complete
 
-## Internal Design (Agent-Parallel Evolution)
+## Archived: Agent-Parallel Design
 
-`docs/internal/agent-parallel-design.md` is a Stage 1 design pack for evolving the pipeline into a multi-agent system using A2A protocol + MCP tools, implemented in Go. This is proposed/future work — the current system is single-agent. Key decisions: Go implementation (ADR-005), KuzuDB for code graph, local-only deployment for v1, graceful degradation to single-agent mode.
+`docs/internal/agent-parallel-design.md` contains a Stage 1 design pack for evolving the pipeline into a multi-agent system using A2A protocol. This work is archived -- testing showed the single-agent approach (one Claude session with good instructions and targeted tools) handles the pipeline effectively. The design is preserved as reference material for if/when single-agent decomposition hits scaling limits. See `docs/recommendations.md` for the decision rationale.
 
 ## License
 
-PolyForm Shield 1.0.0 — see `LICENSE.txt`.
+PolyForm Shield 1.0.0 -- see `LICENSE.txt`.

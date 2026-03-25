@@ -1,2 +1,7 @@
 .ctxt
 .firecrawl
+docs/archive
+docs/decompose
+.DS_Store
+bin/
+/decompose

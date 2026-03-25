@@ -32,9 +32,9 @@
 
 ## Milestone Dependencies
 
-<!-- ASCII dependency graph. Show:
+<!-- Mermaid dependency graph. Show:
      - Sequential dependencies (arrows)
-     - Parallel paths (separate lines)
+     - Parallel paths (separate branches)
      - Convergence points (where paths rejoin)
      Identify the critical path and parallelizable work.
 
@@ -42,10 +42,11 @@
      This granularity helps identify when milestones can start earlier than the
      coarse ordering suggests (e.g., M3 only needs TodayView from M2, not all of M2). -->
 
-```
-M1 ──► M2 ──┬──► M3
-             │
-             └──► M4
+```mermaid
+graph LR
+    M1 --> M2
+    M2 --> M3
+    M2 --> M4
 ```
 
 With dependency rationale (optional):
