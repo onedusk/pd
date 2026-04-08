@@ -89,3 +89,20 @@ The binary runs as a stdio MCP server. Configure it in `.claude/mcp.json` or equ
 ## License
 
 PolyForm Shield 1.0.0 -- see `LICENSE.txt`.
+
+<!-- decompose:start -->
+## Decompose Code Intelligence
+
+This project has a decompose MCP server with code intelligence tools powered by tree-sitter and a graph database. For code understanding tasks, these tools provide richer context than manual file operations:
+
+- `mcp__decompose__build_graph` — index the codebase (run once per session, persists to .decompose/graph/)
+- `mcp__decompose__query_symbols` — find functions, types, interfaces by name
+- `mcp__decompose__get_dependencies` — trace upstream/downstream dependencies
+- `mcp__decompose__assess_impact` — compute blast radius of file changes
+- `mcp__decompose__get_clusters` — discover tightly-coupled file groups
+
+For the /decompose skill specifically:
+- `mcp__decompose__get_stage_context` — load templates and prerequisite content
+- `mcp__decompose__write_stage` — write stage files with validation and coherence checking
+- `mcp__decompose__get_status` — check decomposition progress
+<!-- decompose:end -->

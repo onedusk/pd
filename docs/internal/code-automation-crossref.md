@@ -36,6 +36,7 @@ Claude Code features relevant to pd, with their current readiness. Features mark
 | Context management | `CACHED_MICROCOMPACT`, `COMPACTION_REMINDERS` | Experimental (working) | Performance + UX |
 | Resilient retry | `UNATTENDED_RETRY` | Experimental (working) | Automatic API retry |
 | Team memory | `TEAMMEM` | Experimental (working) | Shared memory files |
+| Plugin executables | Plugin `bin/` directory | GA (2.1.91) | Plugins ship pre-built binaries, invokable as bare Bash commands |
 | Workflow automation | `WORKFLOW_SCRIPTS` | Broken | Missing command + tool impl |
 | Implementation monitoring | `MONITOR_TOOL` | Broken | Missing tool impl |
 | Template jobs | `TEMPLATES` | Broken | Missing CLI handler |
@@ -118,6 +119,32 @@ Claude Code's skill improvement hooks automatically detect recurring user correc
 This works with or without the `SKILL_IMPROVEMENT` flag. With the flag enabled, Claude Code's hook automates the "propose permanent skill update" step. Without it, the SKILL.md instruction makes the agent track corrections manually within the session.
 
 **Complexity:** Low (SKILL.md addendum). Medium if also writing the skill improvement integration to ensure the decompose skill is recognized as a project skill by the hook.
+
+#### 2C. `run_coherence` -- Mechanical Cross-Stage Verification in the Binary
+
+Items 2A (verification agent) and the existing `run_review` address different verification surfaces: `run_review` checks the plan against the codebase (do referenced files and symbols exist?), while 2A uses an LLM to check the plan against itself (is the spec internally consistent?). Neither provides deterministic, repeatable cross-stage structural verification.
+
+**The gap:** Certain cross-stage consistency checks are mechanical -- they don't require LLM judgment, just parsing and comparison. An LLM-based agent might catch these, or might not, depending on context pressure and attention. A binary command catches them every time.
+
+**Build:** A new `run_coherence` subcommand in the decompose binary (`decompose coherence <name>`) and a corresponding `run_coherence` MCP tool. It reads all stage files for a named decomposition and runs structural checks across stages:
+
+1. **Stage 1 -> Stage 2: Data model coverage.** Parse entity names from Stage 1's data model section. Verify each has a corresponding type definition in Stage 2. Report any Stage 1 entities missing from Stage 2 skeletons.
+2. **Stage 2 -> Stage 3: Skeleton coverage.** Parse type/interface names from Stage 2. Verify each appears in at least one Stage 3 milestone's file list. Report skeletons that aren't assigned to any milestone.
+3. **Stage 3 -> Stage 4: Milestone coverage.** Parse milestone IDs and file lists from Stage 3. Verify each milestone has a corresponding `tasks_mNN.md` file. Verify every file listed in Stage 3 appears in at least one Stage 4 task. Report gaps.
+4. **Stage 4 -> Stage 2: Task-skeleton alignment.** For tasks that reference Stage 2 types (e.g., "copy the User model from Stage 2"), verify the referenced type exists in Stage 2. Report stale references.
+5. **Cross-stage naming consistency.** Collect all entity/type/file names across stages. Flag cases where the same concept uses different names in different stages (e.g., `UserAccount` in Stage 1 but `User` in Stage 2).
+
+Findings use the same classification as `run_review`: MISMATCH (stages contradict each other), OMISSION (something in an earlier stage has no downstream coverage), STALE (a later stage references something removed from an earlier stage).
+
+**How it relates to 2A:** `run_coherence` and the verification agent are complementary, not redundant. `run_coherence` catches structural mismatches deterministically -- it will never miss a Stage 1 entity that's absent from Stage 2. The verification agent catches semantic problems that require judgment -- an entity is present in Stage 2 but its field types don't match the Stage 1 description. Run `run_coherence` first (fast, deterministic), then the verification agent (slower, judgment-based) on whatever passes.
+
+**How it relates to `run_review`:** `run_review` checks plan-vs-codebase (do the files and symbols the plan references actually exist?). `run_coherence` checks plan-vs-plan (do the stages reference each other correctly?). They run at different times: `run_coherence` runs between stages as they're written, `run_review` runs after Stage 4 is complete.
+
+**Integration with SKILL.md:** Update `references/review.md` to call `run_coherence` before `run_review` in the review phase. Optionally, add per-stage coherence checks to each stage reference file (e.g., `references/stage-2.md` could instruct: "after writing, run `run_coherence` to verify all Stage 1 entities have skeleton coverage"). This catches drift early rather than waiting until the full review phase.
+
+**Complexity:** Medium-High. Requires parsing stage markdown files to extract entity names, milestone IDs, file lists, and type definitions. The parsing doesn't need to be perfect -- heuristic extraction (heading patterns, code block contents, file path patterns) is sufficient since the stage templates enforce consistent structure. The MCP tool wrapper and CLI subcommand are straightforward given the existing `run_review` pattern.
+
+**Prerequisite:** The decompose binary must be available (CGO build with tree-sitter + KuzuDB). Environments without the binary fall back to the verification agent (2A) for cross-stage checks.
 
 ---
 
@@ -232,6 +259,52 @@ This is a minor SKILL.md refinement that makes unattended retry safe for decompo
 
 ---
 
+### 7. Plugin Distribution for the Decompose Binary
+
+**Claude Code provides:** As of 2.1.91, plugins can ship executables under `bin/` and invoke them as bare commands from the Bash tool. This is a GA capability, not behind a feature flag.
+
+**What pd should build:**
+
+#### 7A. Package Progressive Decomposition as a Plugin with Pre-Built Binaries
+
+Today the decompose binary requires users to run `make build` with CGO enabled (tree-sitter + KuzuDB dependencies), then manually configure `.claude/mcp.json`. This setup barrier means the binary is effectively optional, and most users rely on the skill alone without code intelligence or mechanical review checks.
+
+**Build:** Package progressive-decomposition as a Claude Code plugin (`.plugin` format) that includes:
+- The `/decompose` skill (SKILL.md + reference files + templates + process guide)
+- Pre-built `decompose` binaries under `bin/` for target platforms (darwin-arm64, darwin-x64, linux-x64 at minimum)
+- MCP server configuration bundled in the plugin manifest, so the `decompose` MCP tools register automatically on install
+
+The user installs the plugin and gets the full stack: skill, templates, binary, and MCP tools. No build step, no CGO dependency, no manual config.
+
+**Binary invocation model.** Two options exist and may coexist:
+
+1. **MCP server (current model).** The binary runs as a stdio MCP server. Plugin-bundled MCP config registers the tools automatically. The skill invokes tools through the MCP protocol with structured JSON responses. This is the richer interface -- tool definitions are discoverable, responses are typed, and Claude Code's tool infrastructure handles retries and error formatting.
+
+2. **Direct Bash invocation.** The `bin/` executable feature allows the skill to call `decompose review auth-system` directly from Bash and parse the text output. This is simpler for one-shot commands (review, coherence check, status) where the overhead of a running MCP server adds no value. It also works as a fallback if MCP registration fails.
+
+The recommended approach: ship both. MCP for the persistent tools used during decomposition (build_graph, query_symbols, get_dependencies, assess_impact, get_clusters), direct Bash for the one-shot commands used at stage boundaries and during review (run_review, run_coherence, status). This avoids keeping a long-running MCP server alive for commands that run once and exit.
+
+**Platform-specific binaries.** The binary includes CGO dependencies (tree-sitter grammars, KuzuDB). Cross-compilation with CGO is non-trivial. The build matrix needs:
+- darwin-arm64 (Apple Silicon Macs -- primary user base)
+- darwin-x64 (Intel Macs -- declining but still present)
+- linux-x64 (CI environments, remote Claude Code sessions, Cowork VMs)
+
+A GitHub Actions workflow with platform-specific runners (or cross-compilation via Zig CC) can produce these. The plugin build step compiles all three, places them under `bin/darwin-arm64/decompose`, `bin/darwin-x64/decompose`, `bin/linux-x64/decompose`, and the plugin manifest selects the correct one at install time. (The exact mechanism for platform selection in plugins needs investigation -- it may require separate plugin builds per platform, or the plugin format may support a platform map.)
+
+**Binary size.** Tree-sitter grammars and KuzuDB add non-trivial weight. Static linking produces a binary in the 20-40MB range depending on which grammars are included. This is acceptable for a plugin but worth monitoring. If size becomes a concern, grammar selection could be configurable at build time (only include Go + TypeScript + Python by default, add others on request).
+
+**What this unlocks beyond distribution:**
+- The binary stops being optional and becomes the default path. Code intelligence and mechanical review become standard rather than power-user features.
+- Plugin updates deliver binary improvements without requiring users to rebuild.
+- The headless verification agent (2A) can invoke `bin/decompose` directly, making it a self-contained verification pipeline without MCP coordination.
+- Item 1B (native-tool-only review for remote agents) becomes less critical, since the plugin binary provides the full review capability wherever the plugin is installed.
+
+**Complexity:** Medium-High. The plugin packaging itself is straightforward (skill files + binary + manifest). The complexity is in the cross-platform build pipeline (CGO cross-compilation), platform selection in the plugin format (needs investigation), and ensuring the MCP config registers correctly on install. Once the build pipeline exists, subsequent releases are automated.
+
+**Prerequisites:** Investigate the Claude Code plugin format specification -- specifically how `bin/` executables are resolved per platform, whether MCP configs can be bundled in the manifest, and whether there are size limits on plugin packages. The `create-cowork-plugin` skill may have relevant guidance.
+
+---
+
 ## What to Build: Summary
 
 | ID | What to Build in PD | CC Capability It Leverages | Type | Complexity |
@@ -240,12 +313,14 @@ This is a minor SKILL.md refinement that makes unattended retry safe for decompo
 | 1B | Native-tool-only review prompt template | Remote triggers/`/schedule` | Asset + template | Medium |
 | 2A | Decomposition verification agent | Verification agent spawning | `.claude/agents/` definition | Medium |
 | 2B | Convergence tracking in skill | Skill improvement hooks | SKILL.md addendum | Low |
+| 2C | `run_coherence` cross-stage verification | Decompose binary (tree-sitter, markdown parsing) | Binary subcommand + MCP tool | Medium-High |
 | 3A | Session state summary hook | Memory extraction | `.claude/hooks/` + SKILL.md | Medium |
 | 3B | Stage 0 as team memory alignment | Team memory (`TEAMMEM`) | Design intent (future) | Low |
 | 4A | Cluster-guided parallel exploration | Explore subagent | SKILL.md conditional workflow | Low-Medium |
 | 4B | Plan agent for architecture drafting | Plan subagent | SKILL.md addendum | Low |
 | 5A | Token-aware stage pacing guidance | Token budget tracking | SKILL.md addendum | Low |
 | 6A | Idempotent stage output guidance | Unattended retry | SKILL.md guidance | Low |
+| 7A | Plugin packaging with pre-built binaries | Plugin `bin/` executables (GA) | Plugin package + CI pipeline | Medium-High |
 
 ---
 
@@ -255,18 +330,20 @@ This is a minor SKILL.md refinement that makes unattended retry safe for decompo
 
 Six items are SKILL.md addenda that compose directly with Claude Code capabilities already working in the experimental build. No new files, no binary changes. These can be written and tested in a single session against a real decomposition.
 
-### Next: Custom Agent + Hook (items 2A, 3A)
+### Next: Custom Agent, Hook, and Binary Command (items 2A, 2C, 3A)
 
-Two items require new files:
-- `.claude/agents/decompose-verifier.md` -- the adversarial plan verification agent
-- `.claude/hooks/decompose-session-state.sh` (or equivalent) -- the session state summary hook
+Three items require new files:
+- `.claude/agents/decompose-verifier.md` -- the adversarial plan verification agent (2A)
+- `run_coherence` subcommand + MCP tool in the decompose binary (2C)
+- `.claude/hooks/decompose-session-state.sh` (or equivalent) -- the session state summary hook (3A)
 
-These need design, implementation, and testing against real decompositions. The verification agent in particular needs calibration -- too aggressive and it blocks every stage, too permissive and it adds no value over self-review.
+These need design, implementation, and testing against real decompositions. The verification agent (2A) needs calibration -- too aggressive and it blocks every stage, too permissive and it adds no value over self-review. `run_coherence` (2C) needs a markdown parsing strategy for extracting entity names and file lists from stage files; heuristic extraction based on template structure is sufficient. The recommended verification order is: `run_coherence` first (deterministic structural checks), then 2A (LLM-based semantic checks), then `run_review` (plan-vs-codebase checks).
 
-### Later: Review Template + Team Memory (items 1B, 3B)
+### Later: Plugin Packaging, Review Template + Team Memory (items 7A, 1B, 3B)
 
-Two items are contingent:
-- The native-tool-only review prompt (1B) is worth building when remote triggers stabilize, since it also serves as a fallback for environments without the decompose binary
+Three items are contingent or require infrastructure work:
+- Plugin packaging (7A) requires investigating the plugin format spec, building a cross-platform CI pipeline, and validating MCP config bundling. This is the highest-impact item in the "Later" group because it makes the binary the default path for all users, but it depends on the binary itself being stable (items 2C and the existing run_review need to be solid first). Once shipped, it reduces the urgency of 1B since the binary's review checks travel with the plugin.
+- The native-tool-only review prompt (1B) is worth building when remote triggers stabilize, since it also serves as a fallback for environments without the decompose binary. If 7A ships first, 1B becomes a fallback for remote-only environments where plugins aren't installed.
 - The Stage 0 / team memory alignment (3B) is a design intent to converge when `TEAMMEM` ships natively -- no immediate code needed
 
 ---
@@ -292,9 +369,11 @@ These are noted for future cross-reference. If any are reconstructed in a future
 | Manual review cadence during implementation | Cron/`/loop` | 1A: Review-loop pattern |
 | No cross-session review monitoring | Remote triggers | 1B: Native-tool review template |
 | Same-agent self-review tension | Verification agent | 2A: Decomposition verifier agent |
+| Cross-stage structural drift (entities, milestones, file lists) | Decompose binary | 2C: `run_coherence` command |
 | Feedback loop lacks convergence heuristic | Skill improvement hooks | 2B: Convergence tracking |
 | No cross-session state persistence | Memory extraction | 3A: Session state hook |
 | Stage 0 duplicates team memory concept | `TEAMMEM` | 3B: Design alignment |
 | Sequential Stage 1 discovery bottleneck | Explore/Plan subagents | 4A, 4B: Parallel exploration |
 | Unexpected compaction mid-stage | Token budget tracking | 5A: Stage pacing guidance |
 | API failures interrupting long sessions | Unattended retry | 6A: Idempotent output guidance |
+| Binary requires manual build + CGO + MCP config | Plugin `bin/` executables | 7A: Plugin distribution |

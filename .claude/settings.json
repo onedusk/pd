@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Write|Edit|Glob|Grep|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/decompose-tool-guard.sh",
+            "timeout": 8
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -5,3 +5,4 @@ docs/decompose
 .DS_Store
 bin/
 /decompose
+.decompose/

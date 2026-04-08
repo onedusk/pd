@@ -83,9 +83,9 @@ project/
     └── foo.go                 MODIFY (M2)
 ` + "```",
 			expected: []FileEntry{
-				{Path: "project/go.mod", Actions: map[string]string{"M1": "CREATE"}, Milestones: []string{"M1"}},
-				{Path: "project/cmd/main.go", Actions: map[string]string{"M1": "CREATE", "M6": "MODIFY"}, Milestones: []string{"M1", "M6"}},
-				{Path: "project/internal/foo.go", Actions: map[string]string{"M2": "MODIFY"}, Milestones: []string{"M2"}},
+				{Path: "go.mod", Actions: map[string]string{"M1": "CREATE"}, Milestones: []string{"M1"}},
+				{Path: "cmd/main.go", Actions: map[string]string{"M1": "CREATE", "M6": "MODIFY"}, Milestones: []string{"M1", "M6"}},
+				{Path: "internal/foo.go", Actions: map[string]string{"M2": "MODIFY"}, Milestones: []string{"M2"}},
 			},
 		},
 		{
@@ -100,8 +100,8 @@ src/
     handler.go                 MODIFY (M3)
 ` + "```",
 			expected: []FileEntry{
-				{Path: "src/models/user.go", Actions: map[string]string{"M1": "CREATE"}, Milestones: []string{"M1"}},
-				{Path: "src/api/handler.go", Actions: map[string]string{"M3": "MODIFY"}, Milestones: []string{"M3"}},
+				{Path: "models/user.go", Actions: map[string]string{"M1": "CREATE"}, Milestones: []string{"M1"}},
+				{Path: "api/handler.go", Actions: map[string]string{"M3": "MODIFY"}, Milestones: []string{"M3"}},
 			},
 		},
 		{
