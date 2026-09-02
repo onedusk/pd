@@ -6,6 +6,10 @@ Extends the emerging [Spec-Driven Development](https://www.thoughtworks.com/en-u
 
 Extracted from using in multiple medium-large codebases using this approach. Generalized to work with any stack, any platform, and any team — human or AI-assisted.
 
+## Why This Exists
+
+Every gap in a specification gets filled by whoever implements it. Implementers, human or AI, fill those gaps with assumptions, and assumptions are where bugs and rework come from. This pipeline closes the gaps before implementation starts by forcing the idea through a sequence of forms, each stricter than the last. Prose lets you be vague. A type definition does not: a field can't be both required and nullable in a type system, but it can be in a design doc. A dependency-ordered plan does not. A task that names the exact file to create does not. Ambiguity that survives one stage gets exposed by the next, and what comes out the end is a set of tasks precise enough to execute without guessing.
+
 ## Who This Is For
 
 Builders. Solo developers, small teams, and AI-assisted development workflows. If you have an idea and need to turn it into a structured implementation plan before writing code, this is your process.
@@ -60,17 +64,19 @@ Most SDD tools implement a 3-stage pipeline. Progressive Decomposition adds two 
 **Stages 0 and 2 are the differentiators:**
 
 - **Stage 0 (Development Standards)** grounds the project in verified platform versions, tooling baselines, and team norms — preventing hallucinated framework APIs and inconsistent conventions.
-- **Stage 2 (Implementation Skeletons)** forces the design into compilable type definitions *before* task planning begins. Schema definitions reveal ambiguities that prose descriptions hide — specifically in data models and interface contracts, where type systems enforce unambiguous field types, nullability, and relationships. A field can't be both required and nullable in a type system — but it can be in a design doc.
+- **Stage 2 (Implementation Skeletons)** forces the design into compilable type definitions *before* task planning begins. Schema definitions reveal ambiguities that prose descriptions hide — specifically in data models and interface contracts, where type systems enforce unambiguous field types, nullability, and relationships.
 
 ## Quick Start (Manual)
 
 1. Copy `templates/` into your project's `docs/` directory
-2. Read [`process-guide.md`](process-guide.md) for the full methodology
+2. Read [`docs/process-guide.md`](docs/process-guide.md) for the full methodology
 3. Fill in Stage 0 once for your team/org
 4. For each new project, work through Stages 1–4 in order
 5. Refer to [`examples/`](examples/) for concrete illustrations from a real project
 
 ## decompose CLI
+
+Everything above works with nothing more than the templates and the process guide. The `decompose` binary and the bundled Claude Code skill (`.claude/skills/decompose/`) are accelerators, not requirements: the skill walks you through each stage interactively, and the binary adds code intelligence so plans can be checked against the real codebase instead of against assumptions.
 
 The `decompose` binary automates the pipeline with optional multi-agent parallelism via the A2A protocol.
 
@@ -161,7 +167,8 @@ Stage 0 output (development standards) can be packaged as an [`AGENTS.md`](https
 ```
 progressive-decomposition/
 ├── README.md                                  ← you are here
-├── process-guide.md                           ← full methodology reference
+├── docs/
+│   └── process-guide.md                       ← full methodology reference
 ├── templates/
 │   ├── stage-0-development-standards.md       ← fill-in template
 │   ├── stage-1-design-pack.md                 ← fill-in template
