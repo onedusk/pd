@@ -32,16 +32,17 @@
 
 ## Milestone Dependencies
 
-<!-- ASCII dependency graph. Show:
+<!-- Mermaid dependency graph. Show:
      - Sequential dependencies (arrows)
-     - Parallel paths (separate lines)
+     - Parallel paths (separate branches)
      - Convergence points (where paths rejoin)
      Identify the critical path and parallelizable work. -->
 
-```
-M1 ──► M2 ──┬──► M3
-             │
-             └──► M4
+```mermaid
+graph LR
+    M1 --> M2
+    M2 --> M3
+    M2 --> M4
 ```
 
 **Critical path:** M1 → M2 → ...

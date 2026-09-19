@@ -69,14 +69,12 @@
 
 ### Component Diagram
 
-<!-- ASCII diagram showing layers and their connections. -->
+<!-- Mermaid diagram showing layers and their connections. -->
 
-```
-[Presentation Layer]
-        |
-[Domain / Business Logic Layer]
-        |
-[Data / Infrastructure Layer]
+```mermaid
+graph TD
+    A[Presentation Layer] --> B[Domain / Business Logic Layer]
+    B --> C[Data / Infrastructure Layer]
 ```
 
 ### Architectural Pattern
@@ -106,16 +104,19 @@
 
 ### Wireframes
 
-<!-- ASCII wireframes for the 3–5 most important screens.
-     Goal is structural layout, not visual design. -->
+<!-- Wireframes for the 3-5 most important screens.
+     Goal is structural layout, not visual design.
+     Use mermaid block diagrams or simple markdown tables. -->
 
-```
-+----------------------------------+
-| [Screen Name]                    |
-|                                  |
-| [Component / section layout]     |
-|                                  |
-+----------------------------------+
+```mermaid
+block-beta
+    columns 1
+    block:screen["Screen Name"]
+        columns 1
+        A["Header / Navigation"]
+        B["Main Content Area"]
+        C["Footer / Actions"]
+    end
 ```
 
 ---

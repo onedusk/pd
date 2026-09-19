@@ -41,6 +41,6 @@ type Store interface {
 type Direction string
 
 const (
-	DirectionUpstream   Direction = "upstream"   // what does this depend on?
-	DirectionDownstream Direction = "downstream" // what depends on this?
+	DirectionUpstream   Direction = "upstream"   // what depends on this? (files that import it)
+	DirectionDownstream Direction = "downstream" // what does this depend on? (files it imports)
 )

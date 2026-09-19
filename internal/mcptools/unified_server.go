@@ -9,7 +9,8 @@ import (
 
 // NewUnifiedMCPServer creates a single MCP server that registers all tools:
 // 3 decompose tools (run_stage, get_status, list_decompositions),
-// 2 hybrid tools (write_stage, get_stage_context),
+// 3 hybrid tools (write_stage, get_stage_context, set_input),
+// 1 review tool (run_review),
 // and 5 code intelligence tools (build_graph, query_symbols, get_dependencies,
 // assess_impact, get_clusters).
 func NewUnifiedMCPServer(pipeline orchestrator.Orchestrator, cfg orchestrator.Config, codeintel *CodeIntelService) *mcp.Server {

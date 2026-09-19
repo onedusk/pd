@@ -159,12 +159,12 @@ func (m *MemStore) neighbors(id string, direction Direction) []string {
 	for _, e := range m.edges {
 		switch direction {
 		case DirectionDownstream:
-			// downstream: id is a dependency of others -> follow edges where SourceID matches
+			// downstream: what id depends on -> follow edges where SourceID matches
 			if e.SourceID == id {
 				result = append(result, e.TargetID)
 			}
 		case DirectionUpstream:
-			// upstream: id depends on others -> follow edges where TargetID matches
+			// upstream: what depends on id -> follow edges where TargetID matches
 			if e.TargetID == id {
 				result = append(result, e.SourceID)
 			}

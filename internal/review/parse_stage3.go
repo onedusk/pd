@@ -80,7 +80,12 @@ func ParseDirectoryTree(stage3Content string) ([]FileEntry, error) {
 		return nil, fmt.Errorf("directory tree section is empty")
 	}
 
-	return parseTreeLines(treeLines)
+	entries, err := parseTreeLines(treeLines)
+	if err != nil {
+		return nil, err
+	}
+
+	return stripRootLabel(entries), nil
 }
 
 // parseTreeLines processes the raw tree lines into FileEntry records.
@@ -202,6 +207,40 @@ func parseTreeLines(lines []string) ([]FileEntry, error) {
 	}
 
 	return result, nil
+}
+
+// stripRootLabel removes a common root directory prefix from all parsed paths.
+// Stage 3 directory trees conventionally start with a project-name label directory
+// (e.g., "arkived/" or "project/") that is not a real path component relative to
+// the project root. If all entries share the same first path component, strip it.
+func stripRootLabel(entries []FileEntry) []FileEntry {
+	if len(entries) == 0 {
+		return entries
+	}
+
+	// Find the first path component of the first entry.
+	first := entries[0].Path
+	sep := strings.IndexByte(first, '/')
+	if sep < 0 {
+		// Single-component path (e.g., "go.mod" at root) — no label to strip.
+		return entries
+	}
+	prefix := first[:sep]
+
+	// Check that ALL entries share this prefix.
+	for _, e := range entries[1:] {
+		if !strings.HasPrefix(e.Path, prefix+"/") {
+			return entries // Not all share the prefix — don't strip.
+		}
+	}
+
+	// All entries share the prefix. Strip it.
+	stripped := make([]FileEntry, len(entries))
+	for i, e := range entries {
+		stripped[i] = e
+		stripped[i].Path = e.Path[sep+1:]
+	}
+	return stripped
 }
 
 // LoadAndParseStage3 reads the Stage 3 file from the decomposition directory

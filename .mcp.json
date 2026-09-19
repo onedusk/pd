@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "decompose": {
+      "args": [
+        "--project-root",
+        "/Users/macadelic/dusk-indust/company/sandbox/progressive-decomposition",
+        "--serve-mcp"
+      ],
+      "command": "/Users/macadelic/dusk-indust/company/sandbox/progressive-decomposition/bin/decompose",
+      "type": "stdio"
+    }
+  }
+}

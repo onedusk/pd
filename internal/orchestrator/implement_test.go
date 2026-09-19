@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,9 +12,12 @@ import (
 
 // mockImplementer returns a mock ImplementerFunc that tracks calls.
 func mockImplementer(results map[string]error) (ImplementerFunc, *[]string) {
+	var mu sync.Mutex
 	var calls []string
 	fn := func(_ context.Context, milestone *MilestoneNode) ([]ImplementationArtifact, error) {
+		mu.Lock()
 		calls = append(calls, milestone.ID)
+		mu.Unlock()
 		if err, ok := results[milestone.ID]; ok && err != nil {
 			return nil, err
 		}
