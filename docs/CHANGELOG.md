@@ -33,6 +33,7 @@ All notable changes to the progressive-decomposition project.
 
 ### Changed
 - **Go module path** — renamed from `github.com/dusk-indust/decompose` to `github.com/onedusk/pd` across all 46 files (68 import references) to match actual repository URL.
+- **Single `recommendations.md`** — the two diverging copies are merged into `docs/internal/recommendations.md`, keeping the newer per-stage review checkpoint policy; the root `docs/recommendations.md` copy is removed.
 
 ### Fixed
 - **KuzuStore `AssessImpact` direction** — walked `DirectionDownstream` (files the changed file imports) instead of `DirectionUpstream` (files that import it), so `decompose review` Check 5, which runs on the persisted Kuzu graph, reported a changed file's dependencies as "directly affected" instead of its dependents. `MemStore` (used by the `assess_impact` MCP tool) was already correct; a Mem/Kuzu parity test now guards the two against drifting apart.

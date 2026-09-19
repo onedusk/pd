@@ -178,7 +178,7 @@ This is the lowest-risk, highest-immediate-impact action and should happen first
    - Stage 4: "Before writing file actions, verify that files listed as MODIFY exist with the signatures assumed."
 5. Keep the Review Phase section -- it correctly documents `run_review` usage.
 6. Remove `set_input`, `get_stage_context`, `write_stage`, `get_status`, `run_stage` from the Available Tools table.
-7. Add explicit /review invocation points: "After Stage 4 completes, recommend running /review to validate the plan against the codebase before implementation. After each task implementation, run /review on the changed files. After all milestones complete, run /review on the full scope of changes."
+7. Add review checkpoints at every stage boundary, not just post-Stage 4. Between each stage: lightweight self-review ("read what was just written, check it against what exists, flag problems before the next stage builds on bad assumptions"). After Stage 4 completes: full codebase validation comparing task specs against the live dependency graph. During implementation: /review (Claude Code native) after each task and after all milestones. The per-stage reviews are the key differentiator from the earlier flow -- they prevent assumption drift from compounding across stages.
 
 ### CLAUDE.md
 
@@ -192,7 +192,7 @@ This is the lowest-risk, highest-immediate-impact action and should happen first
 
 1. **Memstore threshold.** Is the in-memory graph store sufficient for projects under N files? If so, the binary could ship without KuzuDB for small projects. N needs testing.
 
-2. **Review automation.** Should /review run automatically after Stage 4 completion, or remain manually invoked? Automatic invocation ensures it is never skipped but adds latency. Claude Code's native /review command handles the execution; the question is whether the SKILL.md should instruct Claude to invoke it automatically or recommend it and let the user decide.
+2. **Review granularity and automation.** Testing revealed that per-stage review checkpoints during decomposition (not just post-Stage 4) catch real issues: type collisions at Stage 2, milestone ordering contradictions at Stage 3, stale MODIFY targets at Stage 4. The SKILL.md should instruct lightweight self-review between stages as standard practice, with full /review (Claude Code native) reserved for implementation validation. The deeper question is whether self-review is sufficient or whether delegated review via A2A (another Claude session, Gemini, Codex) would catch issues the authoring session misses. Current evidence: self-review already catches substantive bugs (Decimal serialization, non-atomic Redis, double-serialization). The signal to invest in A2A-delegated review would be a demonstrated class of issues that self-review consistently misses. No such class has appeared yet.
 
 3. **Distribution model.** If the project goes external, the reduced binary (Recommendation 5) makes the skill-binary split cleaner: plugin carries skill + templates, binary carries code intelligence. The plugin format for local binary MCP servers remains untested. See docs/internal/plugin-packaging-decision.md.
 
