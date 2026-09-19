@@ -293,6 +293,11 @@ above and can start immediately.
    an error. **New finding:** the binary detects Stage 4 by `stage-4-task-specifications.md`, but
    the skill writes only `tasks_mNN.md`, so `review`/`implement`/`status` treat every
    skill-produced decomposition as Stage 4-incomplete (reproduced on `docs/decompose/agent-parallel`).
+   **Fixed 2026-09-19:** status accepts either layout. First real `decompose review agent-parallel`
+   run: 27 findings; all 11 Check 1 MISMATCHes are false positives from review-3 (the
+   `github.com/onedusk/pd/` root label is only stripped to `onedusk/pd/`). Remaining gap: the
+   orchestrator pipeline still writes the single `stage-4-task-specifications.md`, which review's
+   `tasks_m*.md` parser cannot read.
 4. **review-5** (deterministic findings), **status-1** (status markers), **build-1** (cgo tags).
 
 ### Phase 2 — Correctness & coverage of the kept core (M–L)

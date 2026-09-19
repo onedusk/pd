@@ -42,3 +42,50 @@ func TestCheckExists(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing")
 }
+
+func TestScanCompletedStages_Stage4Layouts(t *testing.T) {
+	write := func(t *testing.T, dir string, names ...string) {
+		t.Helper()
+		for _, n := range names {
+			require.NoError(t, os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o644))
+		}
+	}
+
+	t.Run("per-milestone task files written by the skill", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "stage-1-design-pack.md", "tasks_m01.md", "tasks_m02.md")
+		assert.Equal(t, []int{1, 4}, ScanCompletedStages(dir))
+	})
+
+	t.Run("single file written by the pipeline", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "stage-4-task-specifications.md")
+		assert.Equal(t, []int{4}, ScanCompletedStages(dir))
+	})
+
+	t.Run("no stage 4 output", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "stage-3-task-index.md")
+		assert.Equal(t, []int{3}, ScanCompletedStages(dir))
+	})
+}
+
+func TestGetDecompositionStatus_TaskFiles(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "decompose", "demo")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	for _, n := range []string{
+		"stage-1-design-pack.md",
+		"stage-2-implementation-skeletons.md",
+		"stage-3-task-index.md",
+		"tasks_m02.md",
+		"tasks_m01.md",
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o644))
+	}
+
+	ds := GetDecompositionStatus(root, "demo")
+	assert.True(t, ds.Stages[4].Complete)
+	assert.Equal(t, filepath.Join(dir, "tasks_m01.md"), ds.Stages[4].FilePath)
+	assert.Equal(t, -1, ds.NextStage)
+}

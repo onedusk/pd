@@ -38,14 +38,28 @@ var stageLabels = [5]string{
 func ScanCompletedStages(dir string) []int {
 	var completed []int
 	for stage := 0; stage <= 4; stage++ {
-		s := orchestrator.Stage(stage)
-		filename := fmt.Sprintf("stage-%d-%s.md", stage, s.String())
-		path := filepath.Join(dir, filename)
-		if _, err := os.Stat(path); err == nil {
+		if stageFilePath(dir, stage) != "" {
 			completed = append(completed, stage)
 		}
 	}
 	return completed
+}
+
+// stageFilePath returns the path of a stage's output file in dir, or "" if
+// there is none. Stage 4 is either the single stage-4-task-specifications.md
+// written by the pipeline or the per-milestone tasks_mNN.md files written by
+// the /decompose skill; for the latter the first task file is returned.
+func stageFilePath(dir string, stage int) string {
+	path := filepath.Join(dir, fmt.Sprintf("stage-%d-%s.md", stage, orchestrator.Stage(stage).String()))
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	if stage == int(orchestrator.StageTaskSpecifications) {
+		if matches, _ := filepath.Glob(filepath.Join(dir, "tasks_m*.md")); len(matches) > 0 {
+			return matches[0]
+		}
+	}
+	return ""
 }
 
 // NextStage returns the next stage to run based on completed stages: the
@@ -101,7 +115,7 @@ func GetDecompositionStatus(projectRoot, name string) DecompositionStatus {
 			if i == 0 {
 				filePath = stage0Path
 			} else {
-				filePath = filepath.Join(outputDir, fmt.Sprintf("stage-%d-%s.md", i, slug))
+				filePath = stageFilePath(outputDir, i)
 			}
 		}
 		stages[i] = StageInfo{
