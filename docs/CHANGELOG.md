@@ -34,6 +34,10 @@ All notable changes to the progressive-decomposition project.
 ### Changed
 - **Go module path** — renamed from `github.com/dusk-indust/decompose` to `github.com/onedusk/pd` across all 46 files (68 import references) to match actual repository URL.
 
+### Fixed
+- **KuzuStore `AssessImpact` direction** — walked `DirectionDownstream` (files the changed file imports) instead of `DirectionUpstream` (files that import it), so `decompose review` Check 5, which runs on the persisted Kuzu graph, reported a changed file's dependencies as "directly affected" instead of its dependents. `MemStore` (used by the `assess_impact` MCP tool) was already correct; a Mem/Kuzu parity test now guards the two against drifting apart.
+- **Inverted direction wording** — the `Direction` constant comments (`store.go`), `MemStore.neighbors` comments, and the `get_dependencies` MCP schema description said upstream = "what it depends on". Corrected to match the code: upstream = dependents (who imports this file), downstream = dependencies (what this file imports).
+
 ### Added (prior)
 - **`--help` flag and usage output** — custom help with synopsis, subcommand table, stage descriptions, examples, and all flags. `--help` exits cleanly (code 0); bare `decompose` shows usage then errors.
 - **`decompose status [name]`** CLI command — shows stage completion for one or all decompositions. Shared `internal/status` package used by both CLI and MCP `get_status` tool.

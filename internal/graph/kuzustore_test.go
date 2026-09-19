@@ -295,12 +295,13 @@ func TestKuzuStore_AssessImpact(t *testing.T) {
 	//   A imports C
 	//   B imports D
 	//
-	// AssessImpact uses GetDependencies with DirectionDownstream, which follows
-	// outgoing IMPORTS edges. So for changedFiles=["A"]:
-	//   Downstream depth 1: B, C
-	//   Downstream depth 10: B, C, D
-	//   DirectlyAffected = {B, C}  (depth-1 reachable, minus changed set)
-	//   TransitivelyAffected = {B, C, D} (depth-10 reachable, minus changed set)
+	// AssessImpact uses GetDependencies with DirectionUpstream, which follows
+	// incoming IMPORTS edges (who imports the changed file). So for
+	// changedFiles=["D"]:
+	//   Upstream depth 1: B
+	//   Upstream depth 10: B, A
+	//   DirectlyAffected = {B}  (depth-1 reachable, minus changed set)
+	//   TransitivelyAffected = {A, B} (depth-10 reachable, minus changed set)
 	files := []FileNode{
 		{Path: "a.go", Language: LangGo, LOC: 10},
 		{Path: "b.go", Language: LangGo, LOC: 20},
@@ -315,15 +316,34 @@ func TestKuzuStore_AssessImpact(t *testing.T) {
 	require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "c.go", Kind: EdgeKindImports}))
 	require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "b.go", TargetID: "d.go", Kind: EdgeKindImports}))
 
+	result, err := s.AssessImpact(ctx, []string{"d.go"})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.Equal(t, []string{"b.go"}, sorted(result.DirectlyAffected))
+	assert.Equal(t, []string{"a.go", "b.go"}, sorted(result.TransitivelyAffected))
+
+	// RiskScore = len(transitive) / totalFiles = 2/4 = 0.5.
+	assert.InDelta(t, 0.5, result.RiskScore, 0.01)
+}
+
+func TestKuzuStore_AssessImpact_ChangedImporterAffectsNothing(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	// A imports B. Changing A (the importer) cannot break B, so nothing
+	// is affected. This is the case the inverted implementation got wrong.
+	require.NoError(t, s.AddFile(ctx, FileNode{Path: "a.go", Language: LangGo, LOC: 10}))
+	require.NoError(t, s.AddFile(ctx, FileNode{Path: "b.go", Language: LangGo, LOC: 10}))
+	require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "b.go", Kind: EdgeKindImports}))
+
 	result, err := s.AssessImpact(ctx, []string{"a.go"})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	assert.Equal(t, []string{"b.go", "c.go"}, sorted(result.DirectlyAffected))
-	assert.Equal(t, []string{"b.go", "c.go", "d.go"}, sorted(result.TransitivelyAffected))
-
-	// RiskScore = len(transitive) / totalFiles = 3/4 = 0.75.
-	assert.InDelta(t, 0.75, result.RiskScore, 0.01)
+	assert.Empty(t, result.DirectlyAffected)
+	assert.Empty(t, result.TransitivelyAffected)
+	assert.InDelta(t, 0.0, result.RiskScore, 0.001)
 }
 
 func TestKuzuStore_AssessImpact_NoImpact(t *testing.T) {
@@ -522,9 +542,9 @@ func TestKuzuStore_AssessImpact_DiamondGraph(t *testing.T) {
 	ctx := context.Background()
 
 	// Same diamond: A->B, A->C, B->D, C->D.
-	// ChangedFiles = ["B"]. Downstream from B (depth 1): D.
-	// Downstream from B (depth 10): D.
-	// DirectlyAffected = ["D"], TransitivelyAffected = ["D"].
+	// ChangedFiles = ["B"]. Upstream from B (depth 1): A.
+	// Upstream from B (depth 10): A.
+	// DirectlyAffected = ["A"], TransitivelyAffected = ["A"].
 	files := []FileNode{
 		{Path: "a.go", Language: LangGo, LOC: 10},
 		{Path: "b.go", Language: LangGo, LOC: 10},
@@ -544,8 +564,8 @@ func TestKuzuStore_AssessImpact_DiamondGraph(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	assert.Equal(t, []string{"d.go"}, sorted(result.DirectlyAffected))
-	assert.Equal(t, []string{"d.go"}, sorted(result.TransitivelyAffected))
+	assert.Equal(t, []string{"a.go"}, sorted(result.DirectlyAffected))
+	assert.Equal(t, []string{"a.go"}, sorted(result.TransitivelyAffected))
 
 	// RiskScore = 1/4 = 0.25.
 	assert.InDelta(t, 0.25, result.RiskScore, 0.01)
@@ -555,9 +575,9 @@ func TestKuzuStore_AssessImpact_MultipleChangedFiles(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	// A imports B, C imports D. Change A and C.
-	// Downstream from A: B. Downstream from C: D.
-	// DirectlyAffected = {B, D}, TransitivelyAffected = {B, D}.
+	// A imports B, C imports D. Change B and D.
+	// Upstream from B: A. Upstream from D: C.
+	// DirectlyAffected = {A, C}, TransitivelyAffected = {A, C}.
 	files := []FileNode{
 		{Path: "a.go", Language: LangGo, LOC: 10},
 		{Path: "b.go", Language: LangGo, LOC: 10},
@@ -571,15 +591,46 @@ func TestKuzuStore_AssessImpact_MultipleChangedFiles(t *testing.T) {
 	require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "b.go", Kind: EdgeKindImports}))
 	require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "c.go", TargetID: "d.go", Kind: EdgeKindImports}))
 
-	result, err := s.AssessImpact(ctx, []string{"a.go", "c.go"})
+	result, err := s.AssessImpact(ctx, []string{"b.go", "d.go"})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	assert.Equal(t, []string{"b.go", "d.go"}, sorted(result.DirectlyAffected))
-	assert.Equal(t, []string{"b.go", "d.go"}, sorted(result.TransitivelyAffected))
+	assert.Equal(t, []string{"a.go", "c.go"}, sorted(result.DirectlyAffected))
+	assert.Equal(t, []string{"a.go", "c.go"}, sorted(result.TransitivelyAffected))
 
 	// RiskScore = 2/4 = 0.5.
 	assert.InDelta(t, 0.5, result.RiskScore, 0.01)
+}
+
+// TestAssessImpact_MemAndKuzuAgree guards against the two Store
+// implementations drifting apart on impact direction. The graph is kept
+// shallow so it does not depend on either store's transitive depth limit.
+func TestAssessImpact_MemAndKuzuAgree(t *testing.T) {
+	ctx := context.Background()
+	kuzu := newTestStore(t)
+	mem := NewMemStore()
+
+	// Diamond: A->B, A->C, B->D, C->D (SourceID imports TargetID).
+	for _, s := range []Store{kuzu, mem} {
+		for _, p := range []string{"a.go", "b.go", "c.go", "d.go"} {
+			require.NoError(t, s.AddFile(ctx, FileNode{Path: p, Language: LangGo, LOC: 10}))
+		}
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "b.go", Kind: EdgeKindImports}))
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "c.go", Kind: EdgeKindImports}))
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "b.go", TargetID: "d.go", Kind: EdgeKindImports}))
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "c.go", TargetID: "d.go", Kind: EdgeKindImports}))
+	}
+
+	for _, changed := range [][]string{{"a.go"}, {"b.go"}, {"d.go"}, {"b.go", "c.go"}} {
+		kr, err := kuzu.AssessImpact(ctx, changed)
+		require.NoError(t, err)
+		mr, err := mem.AssessImpact(ctx, changed)
+		require.NoError(t, err)
+
+		assert.Equal(t, sorted(mr.DirectlyAffected), sorted(kr.DirectlyAffected), "direct, changed=%v", changed)
+		assert.Equal(t, sorted(mr.TransitivelyAffected), sorted(kr.TransitivelyAffected), "transitive, changed=%v", changed)
+		assert.InDelta(t, mr.RiskScore, kr.RiskScore, 0.001, "risk, changed=%v", changed)
+	}
 }
 
 func TestKuzuStore_EdgeKindInherits(t *testing.T) {

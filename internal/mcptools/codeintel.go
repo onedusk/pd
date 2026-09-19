@@ -34,7 +34,7 @@ type QuerySymbolsOutput struct {
 // GetDependenciesInput is the input for the get_dependencies MCP tool.
 type GetDependenciesInput struct {
 	NodeID    string `json:"nodeId" jsonschema:"file path or qualified symbol name"`
-	Direction string `json:"direction,omitempty" jsonschema:"upstream (what it depends on) or downstream (what depends on it). Default: downstream"`
+	Direction string `json:"direction,omitempty" jsonschema:"upstream (what depends on it) or downstream (what it depends on). Default: downstream"`
 	MaxDepth  int    `json:"maxDepth,omitempty" jsonschema:"maximum traversal depth (default: 5)"`
 }
 

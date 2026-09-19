@@ -87,8 +87,8 @@ For each file listed in the Stage 3 directory tree with a MODIFY action, check w
 
 Procedure:
 
-1. For each MODIFY target, run `get_dependencies` (downstream direction) or `Grep` for import/require statements referencing the file.
-2. Compare the downstream dependents against the plan's file list.
+1. For each MODIFY target, run `get_dependencies` (upstream direction) or `Grep` for import/require statements referencing the file.
+2. Compare those dependents (files that import the target) against the plan's file list.
 3. Any dependent file that is NOT listed in the Stage 3 directory tree is a potential OMISSION.
 
 Not every dependent needs a task -- some changes are backward-compatible and dependents need no update. The review flags them for human judgment.

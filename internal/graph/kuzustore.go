@@ -333,8 +333,9 @@ func (s *KuzuStore) fileNeighbors(path string, dir Direction) ([]string, error) 
 }
 
 // AssessImpact computes the blast radius of the given set of changed files.
-// It walks IMPORTS edges downstream to find direct and transitive dependents,
-// then computes a risk score from the fan-out ratio.
+// It walks IMPORTS edges upstream (to the files that import each changed file)
+// to find direct and transitive dependents, then computes a risk score from
+// the fan-out ratio.
 func (s *KuzuStore) AssessImpact(ctx context.Context, changedFiles []string) (*ImpactResult, error) {
 	totalFiles, err := s.countTable("File")
 	if err != nil {
@@ -345,7 +346,7 @@ func (s *KuzuStore) AssessImpact(ctx context.Context, changedFiles []string) (*I
 	transitiveSet := map[string]bool{}
 
 	for _, f := range changedFiles {
-		chains, err := s.GetDependencies(ctx, f, DirectionDownstream, 1)
+		chains, err := s.GetDependencies(ctx, f, DirectionUpstream, 1)
 		if err != nil {
 			return nil, err
 		}
@@ -354,7 +355,7 @@ func (s *KuzuStore) AssessImpact(ctx context.Context, changedFiles []string) (*I
 			directSet[last] = true
 		}
 
-		allChains, err := s.GetDependencies(ctx, f, DirectionDownstream, 10)
+		allChains, err := s.GetDependencies(ctx, f, DirectionUpstream, 10)
 		if err != nil {
 			return nil, err
 		}
