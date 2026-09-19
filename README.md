@@ -106,7 +106,7 @@ decompose --agents http://localhost:9100,http://localhost:9101 myproject
 decompose --single-agent myproject
 
 # Run as MCP server for Claude Code integration
-decompose --serve-mcp --project-root /path/to/project
+decompose --project-root /path/to/project --serve-mcp
 ```
 
 **Flags:**
@@ -167,8 +167,15 @@ Stage 0 output (development standards) can be packaged as an [`AGENTS.md`](https
 ```
 progressive-decomposition/
 ├── README.md                                  ← you are here
+├── .claude/skills/decompose/                  ← /decompose skill for Claude Code
+├── cmd/decompose/                             ← Go binary entry point (CLI + MCP server)
+├── internal/                                  ← binary packages (graph, review, mcptools, ...)
 ├── docs/
-│   └── process-guide.md                       ← full methodology reference
+│   ├── process-guide.md                       ← full methodology reference
+│   ├── review-phase.md                        ← plan review checks
+│   ├── CHANGELOG.md
+│   ├── decompose/agent-parallel/              ← complete worked decomposition (stages 1-4)
+│   └── internal/                              ← architecture notes and recommendations
 ├── templates/
 │   ├── stage-0-development-standards.md       ← fill-in template
 │   ├── stage-1-design-pack.md                 ← fill-in template

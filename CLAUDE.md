@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Progressive Decomposition is a **methodology repository** with a supporting Go binary. It defines a 5-stage spec-driven development pipeline for turning project ideas into executable task lists: **idea -> specs -> code shapes -> milestone plan -> task specs**.
 
 The repository contains:
-- `process-guide.md` -- the full methodology reference (primary source of truth)
+- `docs/process-guide.md` -- the full methodology reference (primary source of truth)
 - `templates/` -- fill-in stage templates (stages 0-4)
 - `examples/` -- real project excerpts illustrating each stage
 - `.claude/skills/decompose/` -- Claude Code skill that implements the pipeline interactively
@@ -60,14 +60,14 @@ make test           # run tests
 
 ### Running as MCP Server
 
-The binary runs as a stdio MCP server. Configure it in `.claude/mcp.json` or equivalent:
+The binary runs as a stdio MCP server. `decompose init` writes this to `.mcp.json` at the project root; to configure it by hand:
 
 ```json
 {
   "mcpServers": {
     "decompose": {
-      "command": "./bin/decompose",
-      "args": ["mcp"]
+      "command": "/abs/path/to/bin/decompose",
+      "args": ["--project-root", "/abs/path/to/project", "--serve-mcp"]
     }
   }
 }
@@ -84,11 +84,11 @@ The binary runs as a stdio MCP server. Configure it in `.claude/mcp.json` or equ
 
 ## Archived: Agent-Parallel Design
 
-`docs/internal/agent-parallel-design.md` contains a Stage 1 design pack for evolving the pipeline into a multi-agent system using A2A protocol. This work is archived -- testing showed the single-agent approach (one Claude session with good instructions and targeted tools) handles the pipeline effectively. The design is preserved as reference material for if/when single-agent decomposition hits scaling limits. See `docs/recommendations.md` for the decision rationale.
+`docs/decompose/agent-parallel/stage-1-design-pack.md` contains a Stage 1 design pack for evolving the pipeline into a multi-agent system using A2A protocol. This work is archived -- testing showed the single-agent approach (one Claude session with good instructions and targeted tools) handles the pipeline effectively. The design is preserved as reference material for if/when single-agent decomposition hits scaling limits. See `docs/recommendations.md` for the decision rationale.
 
 ## License
 
-PolyForm Shield 1.0.0 -- see `LICENSE.txt`.
+PolyForm Shield 1.0.0 -- see `LICENSE`.
 
 <!-- decompose:start -->
 ## Decompose Code Intelligence
