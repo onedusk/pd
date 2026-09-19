@@ -43,6 +43,7 @@ All notable changes to the progressive-decomposition project.
 - **`NextStage` with gaps** — returned the highest completed stage + 1, so stages 0, 1, 3 reported Stage 4 as next. It now returns the earliest missing stage (Stage 0 stays optional).
 - **`decompose status <name>` / `decompose export <name>` for unknown names** — printed an all-pending table or empty JSON; both now fail with "decomposition not found".
 - **`decompose implement` required Stage 0** — the shared Stage 0 file is optional everywhere else (and the implementer already skips it when absent); the gate now skips it like `decompose review` does.
+- **Silent file loss in `build_graph`** — files that were inaccessible, unreadable, or failed to parse were skipped with no signal, as were clusters and edges that failed to persist. Both are now counted and reported on stderr; the `build_graph` response is unchanged.
 
 ### Added (prior)
 - **`--help` flag and usage output** — custom help with synopsis, subcommand table, stage descriptions, examples, and all flags. `--help` exits cleanly (code 0); bare `decompose` shows usage then errors.

@@ -86,10 +86,12 @@ func (s *CodeIntelService) BuildGraph(
 		lang   graph.Language
 	}
 	var entries []parseEntry
+	skipped := 0
 
 	fmt.Fprintf(os.Stderr, "Scanning files...\n")
 	walkErr := filepath.WalkDir(input.RepoPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			skipped++
 			return nil // skip inaccessible paths
 		}
 		if d.IsDir() {
@@ -108,6 +110,7 @@ func (s *CodeIntelService) BuildGraph(
 
 		source, err := os.ReadFile(path)
 		if err != nil {
+			skipped++
 			return nil // skip unreadable files
 		}
 
@@ -118,6 +121,7 @@ func (s *CodeIntelService) BuildGraph(
 
 		result, err := s.parser.Parse(ctx, relPath, source, lang)
 		if err != nil {
+			skipped++
 			return nil // skip unparseable files
 		}
 
@@ -127,7 +131,11 @@ func (s *CodeIntelService) BuildGraph(
 	if walkErr != nil {
 		return nil, BuildGraphOutput{}, fmt.Errorf("walk: %w", walkErr)
 	}
-	fmt.Fprintf(os.Stderr, "Parsed %d files\n", len(entries))
+	if skipped > 0 {
+		fmt.Fprintf(os.Stderr, "Parsed %d files (%d skipped: inaccessible, unreadable, or failed to parse)\n", len(entries), skipped)
+	} else {
+		fmt.Fprintf(os.Stderr, "Parsed %d files\n", len(entries))
+	}
 
 	// Pass 2: store all files first (needed for KuzuDB MATCH on IMPORTS edges).
 	var files []graph.FileNode
@@ -223,9 +231,10 @@ func persistGraph(ctx context.Context, src graph.Store, persistPath string, file
 	if err != nil {
 		return fmt.Errorf("get clusters: %w", err)
 	}
+	skippedClusters := 0
 	for _, c := range clusters {
 		if err := dst.AddCluster(ctx, c); err != nil {
-			continue // skip duplicate cluster names
+			skippedClusters++ // skip duplicate cluster names
 		}
 	}
 
@@ -234,11 +243,15 @@ func persistGraph(ctx context.Context, src graph.Store, persistPath string, file
 	if err != nil {
 		return fmt.Errorf("get edges: %w", err)
 	}
+	skippedEdges := 0
 	for _, e := range edges {
 		if err := dst.AddEdge(ctx, e); err != nil {
 			// Skip edges that reference missing nodes (e.g., filtered files).
-			continue
+			skippedEdges++
 		}
+	}
+	if skippedClusters > 0 || skippedEdges > 0 {
+		fmt.Fprintf(os.Stderr, "warning: persisted graph omits %d clusters and %d edges that could not be stored\n", skippedClusters, skippedEdges)
 	}
 
 	return nil
