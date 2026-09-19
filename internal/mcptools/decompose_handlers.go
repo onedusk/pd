@@ -408,5 +408,6 @@ func (s *DecomposeService) RunReview(
 		Mismatches:    report.MismatchCount(),
 		Checks:        checks,
 		Status:        "completed",
+		Message:       strings.Join(report.Warnings, "\n"),
 	}, nil
 }

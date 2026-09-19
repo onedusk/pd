@@ -116,6 +116,24 @@ old_file.go                    DELETE (M4)
 			},
 		},
 		{
+			name: "extensionless files without actions",
+			content: `## Target Directory Tree
+
+` + "```" + `
+project/
+├── Makefile
+├── LICENSE                   CREATE (M1)
+├── scripts
+│   └── build.sh              CREATE (M2)
+└── ...
+` + "```",
+			expected: []FileEntry{
+				{Path: "Makefile", Actions: map[string]string{}},
+				{Path: "LICENSE", Actions: map[string]string{"M1": "CREATE"}, Milestones: []string{"M1"}},
+				{Path: "scripts/build.sh", Actions: map[string]string{"M2": "CREATE"}, Milestones: []string{"M2"}},
+			},
+		},
+		{
 			name:    "no directory tree section",
 			content: "# Stage 3\n\nSome content without a directory tree.",
 			wantErr: true,
@@ -196,6 +214,30 @@ func TestParseTaskSpecs(t *testing.T) {
 	assert.Contains(t, tasks[2].SymbolRefs, "HandleRequest")
 	assert.Contains(t, tasks[2].SymbolRefs, "ServerHandler")
 	assert.Contains(t, tasks[2].SymbolRefs, "TaskState")
+}
+
+func TestRunReview_WarnsOnTaskFileWithNoTasks(t *testing.T) {
+	root := t.TempDir()
+	decompDir := filepath.Join(root, "docs", "decompose", "demo")
+	require.NoError(t, os.MkdirAll(decompDir, 0o755))
+
+	stage3 := "## Target Directory Tree\n\n```\nmain.go    CREATE (M1)\n```\n"
+	good := "- [ ] **T-01.01 — Add main**\n  - **File:** `main.go` (CREATE)\n  - **Depends on:** None\n"
+	drifted := "### T-02.01: Heading format the parser does not recognize\n- **File:** `util.go` (CREATE)\n"
+	require.NoError(t, os.WriteFile(filepath.Join(decompDir, "stage-3-task-index.md"), []byte(stage3), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(decompDir, "tasks_m01.md"), []byte(good), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(decompDir, "tasks_m02.md"), []byte(drifted), 0o644))
+
+	report, err := RunReview(context.Background(), ReviewConfig{
+		ProjectRoot: root,
+		DecompName:  "demo",
+		DecompDir:   decompDir,
+	})
+	require.NoError(t, err)
+
+	require.Len(t, report.Warnings, 1)
+	assert.Contains(t, report.Warnings[0], "tasks_m02.md")
+	assert.Contains(t, report.Markdown(), "tasks_m02.md")
 }
 
 func TestExtractSymbolRefs(t *testing.T) {

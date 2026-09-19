@@ -289,6 +289,10 @@ above and can start immediately.
    (per-stage review checkpoints, matching CLAUDE.md and the skill), so deleting it as planned would
    lose content. Decide which review policy is current, then keep one copy.
 3. **Fail-loud edge cases** — review-8, review-10, graph-9, status-2, validate-1, impl-1.
+   **Done 2026-09-19 except graph-9** (separate commit). review-8 surfaces as a report warning, not
+   an error. **New finding:** the binary detects Stage 4 by `stage-4-task-specifications.md`, but
+   the skill writes only `tasks_mNN.md`, so `review`/`implement`/`status` treat every
+   skill-produced decomposition as Stage 4-incomplete (reproduced on `docs/decompose/agent-parallel`).
 4. **review-5** (deterministic findings), **status-1** (status markers), **build-1** (cgo tags).
 
 ### Phase 2 — Correctness & coverage of the kept core (M–L)

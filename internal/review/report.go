@@ -24,6 +24,15 @@ func (r *ReviewReport) Markdown() string {
 	}
 	fmt.Fprintf(&b, "**Graph indexed:** %s\n\n", graphStatus)
 
+	if len(r.Warnings) > 0 {
+		fmt.Fprintln(&b, "## Warnings")
+		fmt.Fprintln(&b)
+		for _, w := range r.Warnings {
+			fmt.Fprintf(&b, "- %s\n", w)
+		}
+		fmt.Fprintln(&b)
+	}
+
 	// Summary table.
 	fmt.Fprintln(&b, "## Summary")
 	fmt.Fprintln(&b)

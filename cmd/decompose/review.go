@@ -72,6 +72,9 @@ func runReview(_ context.Context, projectRoot, name string, flags cliFlags) erro
 	}
 
 	// Print summary to stderr.
+	for _, w := range report.Warnings {
+		fmt.Fprintf(os.Stderr, "WARNING: %s\n", w)
+	}
 	total := len(report.Findings)
 	mismatches := report.MismatchCount()
 	fmt.Fprintf(os.Stderr, "Review complete: %d findings", total)
