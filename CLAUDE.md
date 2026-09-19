@@ -84,7 +84,7 @@ The binary runs as a stdio MCP server. `decompose init` writes this to `.mcp.jso
 
 ## Archived: Agent-Parallel Design
 
-`docs/decompose/agent-parallel/stage-1-design-pack.md` contains a Stage 1 design pack for evolving the pipeline into a multi-agent system using A2A protocol. This work is archived -- testing showed the single-agent approach (one Claude session with good instructions and targeted tools) handles the pipeline effectively. The design is preserved as reference material for if/when single-agent decomposition hits scaling limits. See `docs/recommendations.md` for the decision rationale.
+`docs/decompose/agent-parallel/stage-1-design-pack.md` contains a Stage 1 design pack for evolving the pipeline into a multi-agent system using A2A protocol. This work is archived -- testing showed the single-agent approach (one Claude session with good instructions and targeted tools) handles the pipeline effectively. The design is preserved as reference material for if/when single-agent decomposition hits scaling limits. See `docs/internal/recommendations.md` for the decision rationale.
 
 ## License
 

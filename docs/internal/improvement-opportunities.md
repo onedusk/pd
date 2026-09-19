@@ -285,10 +285,14 @@ above and can start immediately.
    link + Contents tree), drift-6d / onboard-8 (archive path), drift-7d (dedupe `recommendations.md`).
    **Done 2026-09-19, except drift-7d.** CLAUDE.md now points drift-6d at the tracked
    `docs/decompose/agent-parallel/stage-1-design-pack.md`; also fixed CLAUDE.md's `LICENSE.txt` ref.
-   **drift-7d is blocked on a decision:** the root `docs/recommendations.md` is the *newer* copy
-   (per-stage review checkpoints, matching CLAUDE.md and the skill), so deleting it as planned would
-   lose content. Decide which review policy is current, then keep one copy.
+   **drift-7d done 2026-09-19:** the root copy was the newer one (per-stage review checkpoints,
+   matching CLAUDE.md and the skill); its content now lives at `docs/internal/recommendations.md`
+   and the root copy is removed.
 3. **Fail-loud edge cases** — review-8, review-10, graph-9, status-2, validate-1, impl-1.
+   **Done 2026-09-19** (graph-9 in its own commit; skips reported on stderr only, no MCP schema change). review-8 surfaces as a report warning, not
+   an error. **New finding:** the binary detects Stage 4 by `stage-4-task-specifications.md`, but
+   the skill writes only `tasks_mNN.md`, so `review`/`implement`/`status` treat every
+   skill-produced decomposition as Stage 4-incomplete (reproduced on `docs/decompose/agent-parallel`).
 4. **review-5** (deterministic findings), **status-1** (status markers), **build-1** (cgo tags).
 
 ### Phase 2 — Correctness & coverage of the kept core (M–L)

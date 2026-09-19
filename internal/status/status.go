@@ -48,23 +48,34 @@ func ScanCompletedStages(dir string) []int {
 	return completed
 }
 
-// NextStage returns the next stage to run based on completed stages.
+// NextStage returns the next stage to run based on completed stages: the
+// earliest missing stage from 1 to 4. Stage 0 is shared across decompositions
+// and optional, so it is only returned when nothing is complete.
 // Returns -1 if all stages are complete.
 func NextStage(completed []int) int {
 	if len(completed) == 0 {
 		return 0
 	}
-	max := completed[0]
-	for _, s := range completed[1:] {
-		if s > max {
-			max = s
+	done := make(map[int]bool, len(completed))
+	for _, s := range completed {
+		done[s] = true
+	}
+	for stage := 1; stage <= 4; stage++ {
+		if !done[stage] {
+			return stage
 		}
 	}
-	next := max + 1
-	if next > 4 {
-		return -1
+	return -1
+}
+
+// CheckExists returns an error if the named decomposition has no directory
+// under docs/decompose.
+func CheckExists(projectRoot, name string) error {
+	dir := filepath.Join(projectRoot, "docs", "decompose", name)
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return fmt.Errorf("decomposition %q not found (expected %s)", name, dir)
 	}
-	return next
+	return nil
 }
 
 // GetDecompositionStatus returns detailed status for a single decomposition.

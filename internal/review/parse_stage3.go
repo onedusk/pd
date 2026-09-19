@@ -21,6 +21,10 @@ var treeCharsRe = regexp.MustCompile(`[├└│─►┌┐┘┬┤┴┼╴�
 // fileExtRe matches lines that contain a filename with an extension.
 var fileExtRe = regexp.MustCompile(`(\S+\.\w{1,10})`)
 
+// bareNameRe matches a single-token name that could be a file, such as
+// "Makefile" or ".gitignore", but not placeholders like "..." or prose.
+var bareNameRe = regexp.MustCompile(`^[\w.+-]*[A-Za-z0-9][\w.+-]*$`)
+
 // dirTrailingSlashRe detects directory entries (ending with /).
 var dirTrailingSlashRe = regexp.MustCompile(`^\s*(\S+)/\s*$`)
 
@@ -100,20 +104,15 @@ func parseTreeLines(lines []string) ([]FileEntry, error) {
 	}
 	var dirStack []dirLevel
 
-	for _, line := range lines {
+	for i, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
 
-		// Strip tree-drawing characters and normalize to spaces.
-		normalized := treeCharsRe.ReplaceAllString(line, " ")
-
-		// Calculate indentation depth (number of leading spaces after normalization).
-		stripped := strings.TrimLeft(normalized, " ")
+		depth, stripped := splitTreeIndent(line)
 		if stripped == "" {
 			continue
 		}
-		depth := len(normalized) - len(stripped)
 
 		// Skip lines that are just comments or totals.
 		lower := strings.ToLower(stripped)
@@ -148,8 +147,10 @@ func parseTreeLines(lines []string) ([]FileEntry, error) {
 			isDir = true
 			name = strings.TrimSuffix(name, "/")
 		} else if len(actions) == 0 && !fileExtRe.MatchString(name) {
-			// No action annotations and no file extension — treat as directory.
-			isDir = true
+			// No action annotations and no file extension: a directory if it has
+			// children or is not a bare name, otherwise an extensionless file
+			// such as Makefile or LICENSE.
+			isDir = hasDeeperNextLine(lines[i+1:], depth) || !bareNameRe.MatchString(name)
 		}
 
 		if isDir {
@@ -207,6 +208,27 @@ func parseTreeLines(lines []string) ([]FileEntry, error) {
 	}
 
 	return result, nil
+}
+
+// splitTreeIndent replaces tree-drawing characters with spaces and returns the
+// indentation depth and the remaining text.
+func splitTreeIndent(line string) (int, string) {
+	normalized := treeCharsRe.ReplaceAllString(line, " ")
+	stripped := strings.TrimLeft(normalized, " ")
+	return len(normalized) - len(stripped), stripped
+}
+
+// hasDeeperNextLine reports whether the next non-empty tree line is indented
+// deeper than depth, meaning the current entry has children.
+func hasDeeperNextLine(rest []string, depth int) bool {
+	for _, line := range rest {
+		d, stripped := splitTreeIndent(line)
+		if strings.TrimSpace(stripped) == "" {
+			continue
+		}
+		return d > depth
+	}
+	return false
 }
 
 // stripRootLabel removes a common root directory prefix from all parsed paths.

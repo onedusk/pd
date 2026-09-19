@@ -4,6 +4,8 @@ package mcptools
 
 import (
 	"context"
+	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -171,6 +173,37 @@ func TestBuildGraph(t *testing.T) {
 		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot access repoPath")
+	})
+
+	t.Run("reports skipped unreadable files", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root can read files regardless of permissions")
+		}
+		repo := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(repo, "ok.go"), []byte("package x\n"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(repo, "locked.go"), []byte("package x\n"), 0o000))
+
+		store := newTestStore(t)
+		parser := graph.NewTreeSitterParser()
+		defer parser.Close()
+		svc := NewCodeIntelService(store, parser)
+
+		r, w, err := os.Pipe()
+		require.NoError(t, err)
+		origStderr := os.Stderr
+		os.Stderr = w
+		_, out, err := svc.BuildGraph(context.Background(), nil, BuildGraphInput{
+			RepoPath:  repo,
+			Languages: []string{"go"},
+		})
+		os.Stderr = origStderr
+		require.NoError(t, w.Close())
+		stderr, readErr := io.ReadAll(r)
+		require.NoError(t, readErr)
+
+		require.NoError(t, err)
+		assert.Equal(t, 1, out.Stats.FileCount)
+		assert.Contains(t, string(stderr), "1 skipped")
 	})
 
 	t.Run("empty repoPath returns error", func(t *testing.T) {

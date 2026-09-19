@@ -209,29 +209,40 @@ func isKeyword(name string) bool {
 }
 
 // LoadAndParseStage4 reads all Stage 4 task files from the decomposition directory.
-func LoadAndParseStage4(decompDir string) ([]TaskEntry, error) {
+// It also returns a warning for each file that contains no recognizable task
+// headings, since the checks would otherwise treat that milestone as empty.
+func LoadAndParseStage4(decompDir string) ([]TaskEntry, []string, error) {
 	pattern := filepath.Join(decompDir, "tasks_m*.md")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
-		return nil, fmt.Errorf("glob task files: %w", err)
+		return nil, nil, fmt.Errorf("glob task files: %w", err)
 	}
 	if len(matches) == 0 {
-		return nil, fmt.Errorf("no Stage 4 task files found at %s", pattern)
+		return nil, nil, fmt.Errorf("no Stage 4 task files found at %s", pattern)
 	}
 
 	taskFiles := make(map[string]string)
+	var warnings []string
 	for _, path := range matches {
 		content, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("read task file %s: %w", path, err)
+			return nil, nil, fmt.Errorf("read task file %s: %w", path, err)
 		}
 		// Extract milestone number from filename: tasks_m01.md -> M1
 		base := filepath.Base(path)
 		milestone := milestoneFromFilename(base)
 		taskFiles[milestone] = string(content)
+		if !taskHeadingRe.MatchString(string(content)) {
+			warnings = append(warnings, fmt.Sprintf(
+				"%s: no tasks found; expected headings like `**T-01.01 — Title**`, so checks 2-4 skipped this milestone", base))
+		}
 	}
 
-	return ParseTaskSpecs(taskFiles)
+	tasks, err := ParseTaskSpecs(taskFiles)
+	if err != nil {
+		return nil, nil, err
+	}
+	return tasks, warnings, nil
 }
 
 // milestoneFromFilename extracts milestone ID from a task filename.

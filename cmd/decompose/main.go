@@ -291,6 +291,9 @@ func runImplement(ctx context.Context, projectRoot, name string, flags cliFlags)
 	// Verify decomposition is complete.
 	ds := status.GetDecompositionStatus(projectRoot, name)
 	for _, s := range ds.Stages {
+		if s.Stage == 0 {
+			continue // Stage 0 is optional; the implementer skips it when absent.
+		}
 		if !s.Complete {
 			return fmt.Errorf("stage %d (%s) is not complete; run full decomposition before implementing", s.Stage, s.Name)
 		}

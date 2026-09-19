@@ -40,6 +40,9 @@ type TaskExport struct {
 
 // ExportDecomposition builds a DecompositionExport from the filesystem.
 func ExportDecomposition(projectRoot, name string) (*DecompositionExport, error) {
+	if err := status.CheckExists(projectRoot, name); err != nil {
+		return nil, err
+	}
 	ds := status.GetDecompositionStatus(projectRoot, name)
 
 	export := &DecompositionExport{
