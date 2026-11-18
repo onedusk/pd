@@ -50,6 +50,7 @@ All notable changes to the progressive-decomposition project.
 
 ### Removed
 - **`run_stage` MCP tool**: it ignored its `name` input and, because `--serve-mcp` builds a config with no name or output directory, wrote a Stage 0 stub into the working directory of the server process. The registration, the `RunStage` handler, and its input/output types are gone; `write_stage` covers this path.
+- **Unused `NewDecomposeMCPServer` builder**: `internal/mcptools/decompose_mcpserver.go` (`NewDecomposeMCPServer`, `RunDecomposeMCPServerStdio`) was only reachable from a test. The file and that test are deleted; `NewUnifiedMCPServer` is the server `--serve-mcp` runs, and its tool list test stays.
 
 ### Added (prior)
 - **`--help` flag and usage output** — custom help with synopsis, subcommand table, stage descriptions, examples, and all flags. `--help` exits cleanly (code 0); bare `decompose` shows usage then errors.

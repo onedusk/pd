@@ -118,36 +118,6 @@ func TestDecomposeService_ListDecompositions_WithDecomp(t *testing.T) {
 	assert.Equal(t, 2, out.Decompositions[0].NextStage)
 }
 
-func TestDecomposeMCPServer_ToolsList(t *testing.T) {
-	mock := newMockOrchestrator()
-	cfg := orchestrator.Config{Name: "test", ProjectRoot: t.TempDir()}
-
-	server := NewDecomposeMCPServer(mock, cfg)
-
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go server.Run(ctx, serverTransport)
-
-	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "dev"}, nil)
-	session, err := mcpClient.Connect(ctx, clientTransport, nil)
-	require.NoError(t, err)
-
-	tools, err := session.ListTools(ctx, nil)
-	require.NoError(t, err)
-
-	toolNames := make([]string, len(tools.Tools))
-	for i, tool := range tools.Tools {
-		toolNames[i] = tool.Name
-	}
-
-	assert.Contains(t, toolNames, "get_status")
-	assert.Contains(t, toolNames, "list_decompositions")
-	assert.Len(t, tools.Tools, 2)
-}
-
 // TestUnifiedMCPServer_ToolsList checks the decompose tools the unified server
 // registers when no code intelligence service is attached. run_stage must not
 // be among them: it ignored its name input and wrote into the working
