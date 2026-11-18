@@ -273,7 +273,7 @@ func checkStageOutput(cfg Config, stage Stage) error {
 	}
 	outPath := stageOutputPath(cfg, stage)
 	if _, err := os.Stat(outPath); err == nil {
-		return fmt.Errorf("stage %d (%s) output already exists at %s; pass --force to overwrite it", stage, stage, outPath)
+		return fmt.Errorf("stage %d (%s) output already exists at %s; pass --force before the name to overwrite it (decompose --force <name> [stage])", stage, stage, outPath)
 	}
 	return nil
 }
