@@ -251,8 +251,9 @@ var milestoneBoxArrowRe = regexp.MustCompile(`((?:M\d+)(?:[ \t]*[,+&][ \t]*M\d+)
 var milestoneLabelRe = regexp.MustCompile(`\b(?:M|[Mm]ilestone\s+)(\d+)\s*:`)
 
 // milestoneDependsOnRe matches a "Depends on: M1 (types) + M2" line. The
-// milestones it names are dependencies of the last labelled milestone.
-var milestoneDependsOnRe = regexp.MustCompile(`(?i)\bdepends\s+on\b(.*)$`)
+// milestones it names are dependencies of the last labelled milestone. The
+// colon is required, so prose like "M4 depends on M3" is not read.
+var milestoneDependsOnRe = regexp.MustCompile(`(?i)\bdepends\s+on\s*:(.*)$`)
 
 // milestoneTableRowRe matches Progress table rows like
 // "| M1 | Name | [tasks_m01.md](tasks_m01.md) | | 0 |".

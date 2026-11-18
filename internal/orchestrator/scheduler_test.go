@@ -377,7 +377,9 @@ func TestParseMilestones_ExampleExcerpt(t *testing.T) {
 // TestParseMilestones_DependsOnLines checks "Depends on:" lines under a
 // milestone, and that such a line before any milestone is ignored.
 func TestParseMilestones_DependsOnLines(t *testing.T) {
-	content := "Depends on: M1\n\n## M1: A\n\n## M2: B\nDepends on: M1 (types)\n\n## M3: C\n- **Depends on:** M1 + M2, M3\n"
+	// The prose line under M2 has no colon after "depends on", so it adds
+	// nothing.
+	content := "Depends on: M1\n\n## M1: A\n\n## M2: B\nDepends on: M1 (types)\nUnlike M2, M4 depends on M3.\n\n## M3: C\n- **Depends on:** M1 + M2, M3\n"
 	milestones, err := ParseMilestones(content)
 	require.NoError(t, err)
 	require.Len(t, milestones, 3)
