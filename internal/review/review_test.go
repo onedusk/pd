@@ -375,6 +375,44 @@ func TestCheckFileExistence_CreateThenModify(t *testing.T) {
 	assert.Equal(t, "M1", findings[0].Milestone)
 }
 
+// TestCheckSymbols_BareMethodNameWithSameNamedMethods indexes a file with
+// three methods of the same name on different receivers. All three must be in
+// the graph, and a task that names the bare method must still pass Check 2.
+func TestCheckSymbols_BareMethodNameWithSameNamedMethods(t *testing.T) {
+	ctx := context.Background()
+	source := `package orchestrator
+
+type CLI struct{}
+type PR struct{}
+type File struct{}
+
+func (c *CLI) RequestReview() error { return nil }
+
+func (p *PR) RequestReview() error { return nil }
+
+func (f *File) RequestReview() error { return nil }
+`
+	result, err := graph.NewTreeSitterParser().Parse(ctx, "review.go", []byte(source), graph.LangGo)
+	require.NoError(t, err)
+
+	store := graph.NewMemStore()
+	require.NoError(t, store.AddFile(ctx, result.File))
+	for _, sym := range result.Symbols {
+		require.NoError(t, store.AddSymbol(ctx, sym))
+	}
+
+	methods, err := store.QuerySymbols(ctx, "RequestReview", 10)
+	require.NoError(t, err)
+	assert.Len(t, methods, 3)
+
+	tasks := []TaskEntry{{
+		ID: "T-01.01", Milestone: "M1", File: "review.go", Action: "MODIFY",
+		SymbolRefs: []string{"RequestReview"},
+	}}
+	findings := CheckSymbols(ctx, ReviewConfig{Graph: NewStoreGraphProvider(store)}, tasks)
+	assert.Empty(t, findings)
+}
+
 func TestCheckCrossMilestoneConsistency(t *testing.T) {
 	ctx := context.Background()
 	cfg := ReviewConfig{ProjectRoot: t.TempDir()}

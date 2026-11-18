@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -13,7 +14,7 @@ var _ Store = (*MemStore)(nil)
 type MemStore struct {
 	mu       sync.RWMutex
 	files    map[string]FileNode
-	symbols  map[string]SymbolNode // key: "filePath:name"
+	symbols  map[string]SymbolNode // key: "filePath:name:startLine"
 	edges    []Edge
 	clusters []ClusterNode
 }
@@ -26,9 +27,10 @@ func NewMemStore() *MemStore {
 	}
 }
 
-// symbolKey builds the composite lookup key for a symbol.
-func symbolKey(filePath, name string) string {
-	return filePath + ":" + name
+// symbolKey builds the composite lookup key for a symbol. The start line
+// keeps same-named symbols in one file (methods on different receivers) apart.
+func symbolKey(filePath, name string, startLine int) string {
+	return filePath + ":" + name + ":" + strconv.Itoa(startLine)
 }
 
 // InitSchema is a no-op for the in-memory store.
@@ -44,11 +46,11 @@ func (m *MemStore) AddFile(_ context.Context, node FileNode) error {
 	return nil
 }
 
-// AddSymbol stores a symbol node keyed by "filePath:name".
+// AddSymbol stores a symbol node keyed by "filePath:name:startLine".
 func (m *MemStore) AddSymbol(_ context.Context, node SymbolNode) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.symbols[symbolKey(node.FilePath, node.Name)] = node
+	m.symbols[symbolKey(node.FilePath, node.Name, node.StartLine)] = node
 	return nil
 }
 
@@ -80,14 +82,20 @@ func (m *MemStore) GetFile(_ context.Context, path string) (*FileNode, error) {
 }
 
 // GetSymbol returns the symbol for the given file path and name, or nil if not found.
+// When the file defines the name more than once, the first by start line is returned.
 func (m *MemStore) GetSymbol(_ context.Context, filePath, name string) (*SymbolNode, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	s, ok := m.symbols[symbolKey(filePath, name)]
-	if !ok {
-		return nil, nil
+	var first *SymbolNode
+	for _, s := range m.symbols {
+		if s.FilePath != filePath || s.Name != name {
+			continue
+		}
+		if first == nil || s.StartLine < first.StartLine {
+			first = &s
+		}
 	}
-	return &s, nil
+	return first, nil
 }
 
 // QuerySymbols returns symbols whose name contains query (case-insensitive),
