@@ -838,3 +838,43 @@ func TestGetClusters(t *testing.T) {
 		assert.Empty(t, out.Clusters, "empty store should return no clusters")
 	})
 }
+
+// TestPersistGraph_ReportsUnmatchedEdges checks that an edge whose endpoints
+// match no stored node is counted in the warning. The Kuzu insert matches
+// nothing for it and returns no error, as with the Rust IMPLEMENTS edges
+// (type name to trait name).
+func TestPersistGraph_ReportsUnmatchedEdges(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+
+	files := []graph.FileNode{
+		{Path: "src/a.rs", Language: graph.LangRust, LOC: 10},
+		{Path: "src/b.rs", Language: graph.LangRust, LOC: 10},
+	}
+	for _, f := range files {
+		require.NoError(t, store.AddFile(ctx, f))
+	}
+	edges := []graph.Edge{
+		{SourceID: "src/a.rs", TargetID: "src/b.rs", Kind: graph.EdgeKindImports},
+		{SourceID: "Circle", TargetID: "Shape", Kind: graph.EdgeKindImplements},
+		{SourceID: "Square", TargetID: "Shape", Kind: graph.EdgeKindImplements},
+	}
+	for _, e := range edges {
+		require.NoError(t, store.AddEdge(ctx, e))
+	}
+
+	persistPath := filepath.Join(t.TempDir(), "graph")
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	origStderr := os.Stderr
+	os.Stderr = w
+	persistErr := persistGraph(ctx, store, persistPath, files)
+	os.Stderr = origStderr
+	require.NoError(t, w.Close())
+	stderr, readErr := io.ReadAll(r)
+	require.NoError(t, readErr)
+	require.NoError(t, persistErr)
+
+	assert.Contains(t, string(stderr), "2 edges whose endpoints matched no stored node")
+}

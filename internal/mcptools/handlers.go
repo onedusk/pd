@@ -260,6 +260,7 @@ func persistGraph(ctx context.Context, src graph.Store, persistPath string, file
 	}
 	skippedEdges := 0
 	skippedCalls := 0
+	sentEdges := 0
 	for _, e := range edges {
 		if e.Kind == graph.EdgeKindCalls {
 			skippedCalls++
@@ -268,10 +269,20 @@ func persistGraph(ctx context.Context, src graph.Store, persistPath string, file
 		if err := dst.AddEdge(ctx, e); err != nil {
 			// Skip edges that reference missing nodes (e.g., filtered files).
 			skippedEdges++
+			continue
 		}
+		sentEdges++
 	}
-	if skippedClusters > 0 || skippedEdges > 0 || skippedCalls > 0 {
-		fmt.Fprintf(os.Stderr, "warning: persisted graph omits %d clusters and %d edges that could not be stored, and %d CALLS edges that are not persisted\n", skippedClusters, skippedEdges, skippedCalls)
+
+	// An insert whose endpoints match no stored node creates nothing and
+	// returns no error (Rust IMPLEMENTS edges are type name to trait name),
+	// so compare what was sent with what the saved graph holds.
+	unmatchedEdges := 0
+	if stats, err := dst.Stats(ctx); err == nil && stats.EdgeCount < sentEdges {
+		unmatchedEdges = sentEdges - stats.EdgeCount
+	}
+	if skippedClusters > 0 || skippedEdges > 0 || skippedCalls > 0 || unmatchedEdges > 0 {
+		fmt.Fprintf(os.Stderr, "warning: persisted graph omits %d clusters and %d edges that could not be stored, %d CALLS edges that are not persisted, and %d edges whose endpoints matched no stored node\n", skippedClusters, skippedEdges, skippedCalls, unmatchedEdges)
 	}
 
 	return nil
