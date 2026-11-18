@@ -15,7 +15,7 @@ var version = "dev"
 // 3 hybrid tools (write_stage, get_stage_context, set_input),
 // 1 review tool (run_review),
 // and 6 code intelligence tools (build_graph, query_symbols, get_dependencies,
-// assess_impact, get_clusters).
+// assess_impact, get_clusters, generate_diagram).
 func NewUnifiedMCPServer(pipeline orchestrator.Orchestrator, cfg orchestrator.Config, codeintel *CodeIntelService) *mcp.Server {
 	decomposeSvc := NewDecomposeService(pipeline, cfg)
 	if codeintel != nil {
