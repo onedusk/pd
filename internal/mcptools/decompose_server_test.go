@@ -253,3 +253,35 @@ func TestDecomposeService_RunReview_IndexedGraph(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(findings), "**Graph indexed:** yes")
 }
+
+// TestDecomposeService_GetStageContext_GraphAvailable checks that
+// graphAvailable reports whether the attached graph store holds any files,
+// not a constant true.
+func TestDecomposeService_GetStageContext_GraphAvailable(t *testing.T) {
+	ctx := context.Background()
+
+	indexed := graph.NewMemStore()
+	require.NoError(t, indexed.AddFile(ctx, graph.FileNode{Path: "main.go", Language: graph.LangGo, LOC: 3}))
+
+	tests := []struct {
+		name      string
+		codeintel *CodeIntelService
+		want      bool
+	}{
+		{"no code intelligence service", nil, false},
+		{"empty graph before build_graph", NewCodeIntelService(graph.NewMemStore(), nil), false},
+		{"graph with files", NewCodeIntelService(indexed, nil), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := NewDecomposeService(newMockOrchestrator(), orchestrator.Config{ProjectRoot: t.TempDir()})
+			if tt.codeintel != nil {
+				svc.SetCodeIntel(tt.codeintel)
+			}
+
+			_, out, err := svc.GetStageContext(ctx, nil, GetStageContextInput{Name: "demo", Stage: 1})
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, out.GraphAvailable)
+		})
+	}
+}

@@ -200,7 +200,7 @@ func (s *DecomposeService) WriteStage(
 // GetStageContext returns the template, section names, and prerequisite content
 // needed to generate a stage. Claude calls this before generating sections.
 func (s *DecomposeService) GetStageContext(
-	_ context.Context,
+	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	input GetStageContextInput,
 ) (*mcp.CallToolResult, GetStageContextOutput, error) {
@@ -258,12 +258,20 @@ func (s *DecomposeService) GetStageContext(
 	inputContent := s.inputContent[name]
 	s.mu.RUnlock()
 
+	// The graph is available only once build_graph has put files in the store.
+	graphAvailable := false
+	if s.codeintel != nil {
+		if stats, err := s.codeintel.store.Stats(ctx); err == nil && stats.FileCount > 0 {
+			graphAvailable = true
+		}
+	}
+
 	return nil, GetStageContextOutput{
 		StageName:      stage.String(),
 		SectionNames:   plan.SectionOrder,
 		Prerequisites:  prerequisites,
 		Template:       string(templateData),
-		GraphAvailable: true,
+		GraphAvailable: graphAvailable,
 		InputContent:   inputContent,
 	}, nil
 }
