@@ -30,7 +30,7 @@ func TestRun_SingleStage_WritesRequestedStageAndHonorsForce(t *testing.T) {
 	require.NoError(t, os.WriteFile(stage2, []byte("# Finished skeletons\n"), 0o644))
 	err := run([]string{"--project-root", root, "--single-agent", "demo", "2"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--force")
+	assert.Contains(t, err.Error(), "--force before the name")
 	data, readErr := os.ReadFile(stage2)
 	require.NoError(t, readErr)
 	assert.Equal(t, "# Finished skeletons\n", string(data))
