@@ -30,20 +30,7 @@ var (
 
 	// backtickSymbolRe extracts backtick-delimited identifiers.
 	backtickSymbolRe = regexp.MustCompile("`([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)`")
-
-	// pascalCaseRe matches PascalCase identifiers (3+ chars, not common prose words).
-	pascalCaseRe = regexp.MustCompile(`\b([A-Z][a-z]+(?:[A-Z][a-z]+)+)\b`)
 )
-
-// commonProseWords are PascalCase words that appear in natural English prose
-// and should not be treated as symbol references.
-var commonProseWords = map[string]bool{
-	"None": true, "True": true, "False": true, "This": true,
-	"That": true, "Each": true, "Every": true, "Some": true,
-	"Also": true, "Both": true, "After": true, "Before": true,
-	"Because": true, "Since": true, "Until": true, "While": true,
-	"Where": true, "Which": true, "Other": true, "Another": true,
-}
 
 // ParseTaskSpecs extracts TaskEntry records from one or more Stage 4 task files.
 // taskFiles maps milestone identifier (e.g., "M1") to file content.
@@ -156,7 +143,8 @@ func extractOutline(section string) string {
 }
 
 // ExtractSymbolRefs extracts likely symbol names from a task outline.
-// Looks for backtick-delimited identifiers and PascalCase names.
+// Only backtick-delimited identifiers count; bare CamelCase words in prose
+// (product names, for example) are not symbol references.
 func ExtractSymbolRefs(outline string) []string {
 	seen := make(map[string]bool)
 	var refs []string
@@ -170,18 +158,6 @@ func ExtractSymbolRefs(outline string) []string {
 		}
 		// Skip common keywords.
 		if isKeyword(name) {
-			continue
-		}
-		if !seen[name] {
-			seen[name] = true
-			refs = append(refs, name)
-		}
-	}
-
-	// Extract PascalCase identifiers.
-	for _, m := range pascalCaseRe.FindAllStringSubmatch(outline, -1) {
-		name := m[1]
-		if commonProseWords[name] {
 			continue
 		}
 		if !seen[name] {

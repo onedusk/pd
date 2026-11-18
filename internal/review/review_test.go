@@ -2,8 +2,10 @@ package review
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/onedusk/pd/internal/graph"
@@ -244,16 +246,74 @@ func TestExtractSymbolRefs(t *testing.T) {
 	outline := "Define `ParseConfig` struct. Use `HandleRequest` method. Apply PascalCase naming for AgentCard types."
 	refs := ExtractSymbolRefs(outline)
 
-	assert.Contains(t, refs, "ParseConfig")
-	assert.Contains(t, refs, "HandleRequest")
-	assert.Contains(t, refs, "AgentCard")
-	assert.Contains(t, refs, "PascalCase") // PascalCase is itself PascalCase
+	// Only backtick-quoted names are symbol references.
+	assert.Equal(t, []string{"ParseConfig", "HandleRequest"}, refs)
 
-	// Should not contain common prose words.
-	outline2 := "Before doing this, check that None of the values match."
-	refs2 := ExtractSymbolRefs(outline2)
-	assert.NotContains(t, refs2, "None")
-	assert.NotContains(t, refs2, "Before")
+	// CamelCase words in prose are not symbol references.
+	outline2 := "Port the TypeScript client and open a GitHub issue. Before doing this, check that None of the values match."
+	assert.Empty(t, ExtractSymbolRefs(outline2))
+}
+
+// limitedGraph is a GraphProvider whose QuerySymbols returns substring matches
+// in insertion order and stops at limit, like a store with a row cap.
+type limitedGraph struct {
+	GraphProvider
+	symbols []graph.SymbolNode
+}
+
+func (g *limitedGraph) Available() bool { return true }
+
+func (g *limitedGraph) QuerySymbols(_ context.Context, query string, limit int) ([]graph.SymbolNode, error) {
+	var out []graph.SymbolNode
+	for _, sym := range g.symbols {
+		if !strings.Contains(sym.Name, query) {
+			continue
+		}
+		out = append(out, sym)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+// TestCheckSymbols_ExactNameAmongManySubstringMatches covers a reference to
+// exactly "Store" in a codebase with more than 20 symbols containing "Store".
+func TestCheckSymbols_ExactNameAmongManySubstringMatches(t *testing.T) {
+	g := &limitedGraph{}
+	for i := 0; i < 25; i++ {
+		g.symbols = append(g.symbols, graph.SymbolNode{
+			Name: fmt.Sprintf("Store%02d", i), Kind: graph.SymbolKindType, FilePath: "other.go",
+		})
+	}
+	g.symbols = append(g.symbols, graph.SymbolNode{Name: "Store", Kind: graph.SymbolKindType, FilePath: "store.go"})
+
+	tasks := []TaskEntry{{
+		ID: "T-01.01", Milestone: "M1", File: "store.go", Action: "MODIFY",
+		SymbolRefs: []string{"Store"},
+	}}
+
+	findings := CheckSymbols(context.Background(), ReviewConfig{Graph: g}, tasks)
+	assert.Empty(t, findings)
+}
+
+// TestCheckSymbols_RelocatedSymbolIsStable checks that a symbol found only in
+// other files is reported against the same file on every run.
+func TestCheckSymbols_RelocatedSymbolIsStable(t *testing.T) {
+	g := &limitedGraph{symbols: []graph.SymbolNode{
+		{Name: "Store", Kind: graph.SymbolKindType, FilePath: "z.go"},
+		{Name: "Store", Kind: graph.SymbolKindType, FilePath: "a.go"},
+	}}
+
+	tasks := []TaskEntry{{
+		ID: "T-01.01", Milestone: "M1", File: "store.go", Action: "MODIFY",
+		SymbolRefs: []string{"Store"},
+	}}
+
+	findings := CheckSymbols(context.Background(), ReviewConfig{Graph: g}, tasks)
+	require.Len(t, findings, 1)
+	assert.Equal(t, ClassStale, findings[0].Classification)
+	assert.Contains(t, findings[0].Description, "exists in `a.go`")
 }
 
 func TestCheckFileExistence(t *testing.T) {
