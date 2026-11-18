@@ -5,15 +5,15 @@
 
 The review phase sits between Stage 4 completion and implementation start. If `run_review` is available as an MCP tool, use it. It runs 5 mechanical checks comparing the decomposition plan against the actual codebase:
 
-1. **File existence** -- validates CREATE/MODIFY/DELETE actions against filesystem state
-2. **Symbol verification** -- confirms that symbols referenced in task outlines exist in the expected files
+1. **File existence** -- validates CREATE/MODIFY/DELETE actions against filesystem state (a missing MODIFY target is not reported when the plan also CREATEs that file)
+2. **Symbol verification** -- confirms that symbols referenced in MODIFY task outlines exist in the expected files (only backtick-quoted names count as symbol references)
 3. **Dependency completeness** -- finds files that import MODIFY targets but aren't in the plan
 4. **Cross-milestone consistency** -- detects conflicting actions and ordering issues across milestones
 5. **Coverage gap scan** -- identifies files within scope that may be affected but aren't planned
 
 ## Workflow
 
-1. Call `run_review` with the decomposition name (or run the checks manually if the tool is unavailable).
+1. Call `run_review` with the decomposition name (or run the checks manually if the tool is unavailable). `run_review` uses the in-memory graph only after `build_graph` has run in this session. Before that it uses the graph saved under `.decompose/graph` by an earlier session, which may be out of date, or plain filesystem checks when there is none. Run `build_graph` first if the code has changed.
 2. Review the findings. Findings are classified as:
    - **MISMATCH** -- must fix before implementing
    - **OMISSION** -- evaluate and decide whether to add to the plan or confirm as intentionally excluded
@@ -24,7 +24,7 @@ The review phase sits between Stage 4 completion and implementation start. If `r
 
 If `run_review` is not available, run the checks using native tools:
 
-1. **File existence:** For each MODIFY/DELETE target in the task specs, verify the file exists using Glob. For each CREATE target, verify the file does NOT exist.
+1. **File existence:** For each MODIFY/DELETE target in the task specs, verify the file exists using Glob. For each CREATE target, verify the file does NOT exist. A MODIFY target that an earlier milestone CREATEs is expected to be missing.
 2. **Symbol verification:** For key symbols referenced in task outlines (types, functions, methods), use Grep to confirm they exist in the expected files.
 3. **Dependency completeness:** For each MODIFY target, use Grep to find other files that import/reference it. Check whether those files are accounted for in the plan.
 4. **Cross-milestone consistency:** Check that no two milestones CREATE the same file, and that MODIFY targets in later milestones aren't CREATE targets in earlier ones that haven't been built yet per the ordering.
