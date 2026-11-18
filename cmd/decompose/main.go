@@ -60,7 +60,7 @@ func run(args []string) error {
 	fs.BoolVar(&flags.SkipVerification, "skip-verification", false, "skip post-stage verification")
 	fs.StringVar(&flags.ReviewMode, "review-mode", "cli", "review strategy for implement command: cli, pr, file")
 	fs.IntVar(&flags.MaxConcurrent, "max-concurrent", 3, "max parallel Claude Code sessions for implement command")
-	fs.BoolVar(&flags.Force, "force", false, "overwrite existing files during init")
+	fs.BoolVar(&flags.Force, "force", false, "overwrite existing files (init, stage output)")
 	fs.BoolVar(&flags.SkipReview, "skip-review", false, "suppress review warnings when implementing")
 	fs.BoolVar(&flags.Version, "version", false, "print version and exit")
 
@@ -229,6 +229,7 @@ func run(args []string) error {
 		SingleAgent:      flags.SingleAgent,
 		SkipVerification: flags.SkipVerification,
 		Verbose:          flags.Verbose,
+		Force:            flags.Force,
 	}
 
 	// Create pipeline.

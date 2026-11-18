@@ -20,7 +20,7 @@ type mockExecutor struct {
 	called int
 }
 
-func (m *mockExecutor) Execute(ctx context.Context, cfg Config, inputs []StageResult) (*StageResult, error) {
+func (m *mockExecutor) Execute(ctx context.Context, cfg Config, stage Stage, inputs []StageResult) (*StageResult, error) {
 	m.called++
 	return m.result, m.err
 }
@@ -161,8 +161,8 @@ type writingExecutor struct {
 	stage Stage
 }
 
-func (w *writingExecutor) Execute(ctx context.Context, cfg Config, inputs []StageResult) (*StageResult, error) {
-	result, err := w.inner.Execute(ctx, cfg, inputs)
+func (w *writingExecutor) Execute(ctx context.Context, cfg Config, stage Stage, inputs []StageResult) (*StageResult, error) {
+	result, err := w.inner.Execute(ctx, cfg, stage, inputs)
 	if err != nil {
 		return result, err
 	}

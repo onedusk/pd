@@ -8,10 +8,10 @@ import (
 	"strings"
 )
 
-// StageExecutor executes a single pipeline stage given configuration and
+// StageExecutor executes the given pipeline stage with the configuration and
 // prerequisite stage results.
 type StageExecutor interface {
-	Execute(ctx context.Context, cfg Config, inputs []StageResult) (*StageResult, error)
+	Execute(ctx context.Context, cfg Config, stage Stage, inputs []StageResult) (*StageResult, error)
 }
 
 // Router maps pipeline stages to their registered executors and handles
@@ -48,7 +48,7 @@ func (r *Router) Route(ctx context.Context, stage Stage) (*StageResult, error) {
 		return nil, fmt.Errorf("router: prerequisite check failed for stage %d (%s): %w", stage, stage, err)
 	}
 
-	return exec.Execute(ctx, r.cfg, inputs)
+	return exec.Execute(ctx, r.cfg, stage, inputs)
 }
 
 // RouteRange executes stages sequentially from `from` to `to` (inclusive),
@@ -123,9 +123,8 @@ func stageFileName(stage Stage) string {
 
 // resolvePrerequisites reads the output files for all prior stages and returns
 // them as StageResult values. Required prerequisites that are missing cause an
-// error; optional ones are silently skipped. Reading all prior stages (not just
-// declared prerequisites) ensures downstream executors can correctly infer the
-// current stage index from the input set.
+// error; optional ones are silently skipped. All prior stages are read (not
+// just declared prerequisites) so executors get them as context.
 func (r *Router) resolvePrerequisites(stage Stage) ([]StageResult, error) {
 	if stage == StageDevelopmentStandards {
 		return nil, nil

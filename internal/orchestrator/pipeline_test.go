@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -198,4 +199,143 @@ func TestPipeline_Close(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for progress channel to close")
 	}
+}
+
+// TestPipeline_RunStage_WritesRequestedStage runs Stage 2 in a directory that
+// holds Stage 1 but no Stage 0 (Stage 0 is shared and lives one level up). The
+// pipeline must write the Stage 2 file, not a Stage 0 file.
+func TestPipeline_RunStage_WritesRequestedStage(t *testing.T) {
+	dir := t.TempDir()
+	writeStageFile(t, dir, StageDesignPack, "# Finished design pack")
+	cfg := Config{
+		Name:       "requested-stage",
+		OutputDir:  dir,
+		Capability: CapBasic,
+	}
+
+	pipeline := NewPipeline(cfg, stubClient(t))
+	defer pipeline.Close()
+
+	result, err := pipeline.RunStage(context.Background(), StageImplementationSkeletons)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.Equal(t, StageImplementationSkeletons, result.Stage)
+	assert.Equal(t, []string{filepath.Join(dir, stageFileName(StageImplementationSkeletons))}, result.FilePaths)
+	assert.FileExists(t, filepath.Join(dir, stageFileName(StageImplementationSkeletons)))
+	assert.NoFileExists(t, filepath.Join(dir, stageFileName(StageDevelopmentStandards)))
+}
+
+// TestPipeline_RunPipeline_RefusesExistingStageFiles runs the full pipeline
+// over a finished decomposition. It must fail before writing anything: the
+// finished files keep their content and no new file appears.
+func TestPipeline_RunPipeline_RefusesExistingStageFiles(t *testing.T) {
+	dir := t.TempDir()
+	finished := []Stage{StageDesignPack, StageImplementationSkeletons, StageTaskIndex}
+	for _, s := range finished {
+		writeStageFile(t, dir, s, "# Finished "+s.String())
+	}
+	cfg := Config{
+		Name:       "finished",
+		OutputDir:  dir,
+		Capability: CapBasic,
+	}
+
+	pipeline := NewPipeline(cfg, stubClient(t))
+	defer pipeline.Close()
+
+	_, err := pipeline.RunPipeline(context.Background(), StageDevelopmentStandards, StageTaskSpecifications)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+	assert.Contains(t, err.Error(), "--force")
+
+	for _, s := range finished {
+		data, readErr := os.ReadFile(filepath.Join(dir, stageFileName(s)))
+		require.NoError(t, readErr)
+		assert.Equal(t, "# Finished "+s.String(), string(data))
+	}
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Len(t, entries, len(finished), "no new files should be written")
+}
+
+// TestPipeline_RunStage_RefusesExistingStageFile checks the single-stage path:
+// an existing stage file is left alone and the error names --force.
+func TestPipeline_RunStage_RefusesExistingStageFile(t *testing.T) {
+	dir := t.TempDir()
+	writeStageFile(t, dir, StageDesignPack, "# Finished design pack")
+	cfg := Config{
+		Name:       "finished",
+		OutputDir:  dir,
+		Capability: CapBasic,
+	}
+
+	pipeline := NewPipeline(cfg, stubClient(t))
+	defer pipeline.Close()
+
+	_, err := pipeline.RunStage(context.Background(), StageDesignPack)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+	assert.Contains(t, err.Error(), "--force")
+
+	data, err := os.ReadFile(filepath.Join(dir, stageFileName(StageDesignPack)))
+	require.NoError(t, err)
+	assert.Equal(t, "# Finished design pack", string(data))
+}
+
+// TestPipeline_FullMode_RefusesExistingStageFileBeforeFanOut checks that the
+// existing-file check runs before any agent is contacted.
+func TestPipeline_FullMode_RefusesExistingStageFileBeforeFanOut(t *testing.T) {
+	dir := t.TempDir()
+	writeStageFile(t, dir, StageDevelopmentStandards, "# Finished standards")
+	cfg := Config{
+		Name:           "finished",
+		OutputDir:      dir,
+		Capability:     CapA2AMCP,
+		AgentEndpoints: []string{"http://127.0.0.1:0"},
+	}
+
+	var calls atomic.Int32
+	client := &mockClient{
+		sendMessage: func(_ context.Context, _ string, _ a2a.SendMessageRequest) (*a2a.Task, error) {
+			calls.Add(1)
+			return completedTask("t1", "development-standards"), nil
+		},
+	}
+
+	pipeline := NewPipeline(cfg, client)
+	defer pipeline.Close()
+
+	_, err := pipeline.RunStage(context.Background(), StageDevelopmentStandards)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+	assert.Equal(t, int32(0), calls.Load(), "no agent should be contacted")
+
+	data, err := os.ReadFile(filepath.Join(dir, stageFileName(StageDevelopmentStandards)))
+	require.NoError(t, err)
+	assert.Equal(t, "# Finished standards", string(data))
+}
+
+// TestPipeline_RunPipeline_ForceOverwritesExistingStageFiles checks that Force
+// lifts the existing-file refusal for a multi-stage run.
+func TestPipeline_RunPipeline_ForceOverwritesExistingStageFiles(t *testing.T) {
+	dir := t.TempDir()
+	writeStageFile(t, dir, StageDesignPack, "# Finished design pack")
+	cfg := Config{
+		Name:       "forced",
+		OutputDir:  dir,
+		Capability: CapBasic,
+		Force:      true,
+	}
+
+	pipeline := NewPipeline(cfg, stubClient(t))
+	defer pipeline.Close()
+
+	results, err := pipeline.RunPipeline(context.Background(), StageDevelopmentStandards, StageDesignPack)
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+
+	data, err := os.ReadFile(filepath.Join(dir, stageFileName(StageDesignPack)))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "basic mode")
 }

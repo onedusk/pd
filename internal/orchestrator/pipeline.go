@@ -88,7 +88,14 @@ func (p *Pipeline) RunStage(ctx context.Context, stage Stage) (*StageResult, err
 }
 
 // RunPipeline executes stages from..to inclusive by delegating to the router.
+// It checks every stage in the range for an existing output file first, so a
+// refused run writes nothing.
 func (p *Pipeline) RunPipeline(ctx context.Context, from, to Stage) ([]StageResult, error) {
+	for stage := from; stage <= to; stage++ {
+		if err := checkStageOutput(p.cfg, stage); err != nil {
+			return nil, err
+		}
+	}
 	return p.router.RouteRange(ctx, from, to)
 }
 
@@ -110,23 +117,20 @@ func (p *Pipeline) Close() {
 // Execute is the StageExecutor callback invoked by the Router. It selects
 // between fan-out (full/a2a) and fallback (basic/mcp-only) execution modes
 // based on the configuration capability level.
-func (p *Pipeline) Execute(ctx context.Context, cfg Config, inputs []StageResult) (*StageResult, error) {
-	// Determine the current stage from the router's perspective.
-	stage := p.inferStage(inputs)
-
+func (p *Pipeline) Execute(ctx context.Context, cfg Config, stage Stage, inputs []StageResult) (*StageResult, error) {
 	switch cfg.Capability {
 	case CapFull, CapA2AMCP:
 		if cfg.SingleAgent {
 			fb := NewFallbackExecutor(CapBasic)
-			return fb.Execute(ctx, cfg, inputs)
+			return fb.Execute(ctx, cfg, stage, inputs)
 		}
 		return p.executeFullMode(ctx, cfg, stage, inputs)
 	case CapMCPOnly:
 		fb := NewFallbackExecutor(CapMCPOnly)
-		return fb.Execute(ctx, cfg, inputs)
+		return fb.Execute(ctx, cfg, stage, inputs)
 	default:
 		fb := NewFallbackExecutor(CapBasic)
-		return fb.Execute(ctx, cfg, inputs)
+		return fb.Execute(ctx, cfg, stage, inputs)
 	}
 }
 
@@ -135,6 +139,10 @@ func (p *Pipeline) Execute(ctx context.Context, cfg Config, inputs []StageResult
 // ---------------------------------------------------------------------------
 
 func (p *Pipeline) executeFullMode(ctx context.Context, cfg Config, stage Stage, inputs []StageResult) (*StageResult, error) {
+	if err := checkStageOutput(cfg, stage); err != nil {
+		return nil, err
+	}
+
 	plan := MergePlanForStage(stage)
 
 	// Build the context message from predecessor inputs.
@@ -231,23 +239,6 @@ func (p *Pipeline) verifyStageOutput(stage Stage, content string, priorInputs []
 // Helpers
 // ---------------------------------------------------------------------------
 
-// inferStage determines which stage is being executed based on the inputs
-// that have already been produced. The stage is the smallest stage index
-// not present in the inputs.
-func (p *Pipeline) inferStage(inputs []StageResult) Stage {
-	present := make(map[Stage]bool, len(inputs))
-	for _, r := range inputs {
-		present[r.Stage] = true
-	}
-	for s := StageDevelopmentStandards; s <= StageTaskSpecifications; s++ {
-		if !present[s] {
-			return s
-		}
-	}
-	// All stages present: default to the last one.
-	return StageTaskSpecifications
-}
-
 // MergePlanForStage returns the MergePlan for the given stage. Stages without
 // a multi-section plan return a single-section plan using the stage name.
 func MergePlanForStage(stage Stage) MergePlan {
@@ -271,6 +262,20 @@ func MergePlanForStage(stage Stage) MergePlan {
 // <OutputDir>/stage-{N}-{name}.md
 func stageOutputPath(cfg Config, stage Stage) string {
 	return filepath.Join(cfg.OutputDir, fmt.Sprintf("stage-%d-%s.md", int(stage), stage.String()))
+}
+
+// checkStageOutput returns an error if the stage output file already exists
+// and cfg.Force is not set, so a stage run never replaces finished work
+// unasked.
+func checkStageOutput(cfg Config, stage Stage) error {
+	if cfg.Force {
+		return nil
+	}
+	outPath := stageOutputPath(cfg, stage)
+	if _, err := os.Stat(outPath); err == nil {
+		return fmt.Errorf("stage %d (%s) output already exists at %s; pass --force to overwrite it", stage, stage, outPath)
+	}
+	return nil
 }
 
 // assignSectionsToAgents creates AgentTasks by round-robin assignment of

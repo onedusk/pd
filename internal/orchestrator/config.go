@@ -69,4 +69,7 @@ type Config struct {
 
 	// Verbose enables agent-level progress output.
 	Verbose bool
+
+	// Force allows a stage run to overwrite an existing stage output file.
+	Force bool
 }
