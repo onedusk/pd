@@ -334,6 +334,41 @@ M1 → M2 → M3
 	assert.True(t, found, "should detect MODIFY before CREATE for src/new_file.go")
 }
 
+// TestBuildMilestoneOrder_SkillTemplate uses the Progress table and mermaid
+// block from the skill's Stage 3 template, which has no milestone headings.
+func TestBuildMilestoneOrder_SkillTemplate(t *testing.T) {
+	stage3Content := `## Progress
+
+| # | Milestone | File | Tasks | Done |
+|---|-----------|------|:-----:|:----:|
+| M1 | [Name] | [tasks_m01.md](tasks_m01.md) | | 0 |
+| M2 | [Name] | [tasks_m02.md](tasks_m02.md) | | 0 |
+| M3 | [Name] | [tasks_m03.md](tasks_m03.md) | | 0 |
+
+## Milestone Dependencies
+
+` + "```mermaid" + `
+graph LR
+    M1 --> M2
+    M2 --> M3
+` + "```" + `
+`
+
+	assert.Equal(t, map[string]int{"M1": 0, "M2": 1, "M3": 2}, buildMilestoneOrder(stage3Content))
+}
+
+// TestBuildMilestoneOrder_NoDependencies checks that a plan with no parseable
+// dependency arrows still gets the listed milestone order, so Check 4 does not
+// compare milestones in a random order.
+func TestBuildMilestoneOrder_NoDependencies(t *testing.T) {
+	stage3Content := `## M1: Foundation
+## M2: Features
+## M3: Polish
+`
+
+	assert.Equal(t, map[string]int{"M1": 0, "M2": 1, "M3": 2}, buildMilestoneOrder(stage3Content))
+}
+
 func TestMilestoneFromFilename(t *testing.T) {
 	assert.Equal(t, "M1", milestoneFromFilename("tasks_m01.md"))
 	assert.Equal(t, "M12", milestoneFromFilename("tasks_m12.md"))

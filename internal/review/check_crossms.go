@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -40,6 +41,13 @@ func buildMilestoneOrder(stage3Content string) map[string]int {
 	order := make(map[string]int)
 
 	milestones, err := orchestrator.ParseMilestones(stage3Content)
+	if errors.Is(err, orchestrator.ErrNoMilestoneDependencies) {
+		// No arrows to order by: use the listed order (M1 < M2 < ...).
+		for i, m := range milestones {
+			order[m.ID] = i
+		}
+		return order
+	}
 	if err != nil || len(milestones) == 0 {
 		return order
 	}
