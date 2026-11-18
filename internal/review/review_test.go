@@ -292,6 +292,29 @@ func TestCheckFileExistence(t *testing.T) {
 	assert.Equal(t, "deleted.go", findings[2].FilePath)
 }
 
+// TestCheckFileExistence_CreateThenModify covers a file that one milestone
+// creates and a later one modifies. Only the CREATE can be checked against the
+// filesystem: the MODIFY runs after the file has been created.
+func TestCheckFileExistence_CreateThenModify(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+	cfg := ReviewConfig{ProjectRoot: tmpDir}
+
+	entries := []FileEntry{
+		{Path: "planned.go", Actions: map[string]string{"M1": "CREATE", "M4": "MODIFY"}, Milestones: []string{"M1", "M4"}},
+	}
+
+	// File not created yet: the plan is consistent.
+	assert.Empty(t, CheckFileExistence(ctx, cfg, entries))
+
+	// File already exists: only the CREATE is reported.
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "planned.go"), []byte("package main"), 0o644))
+	findings := CheckFileExistence(ctx, cfg, entries)
+	require.Len(t, findings, 1)
+	assert.Equal(t, ClassMismatch, findings[0].Classification)
+	assert.Equal(t, "M1", findings[0].Milestone)
+}
+
 func TestCheckCrossMilestoneConsistency(t *testing.T) {
 	ctx := context.Background()
 	cfg := ReviewConfig{ProjectRoot: t.TempDir()}
