@@ -186,15 +186,6 @@ func (s *Scheduler) validate() error {
 
 	// Cycle detection using Kahn's algorithm.
 	inDegree := make(map[string]int, len(s.milestones))
-	for _, m := range s.milestones {
-		if _, ok := inDegree[m.ID]; !ok {
-			inDegree[m.ID] = 0
-		}
-		for _, depID := range m.DependsOn {
-			inDegree[m.ID]++
-			_ = depID // counted above
-		}
-	}
 
 	// Recompute in-degree properly: for each edge dep -> m, increment m's in-degree.
 	for id := range s.milestones {
