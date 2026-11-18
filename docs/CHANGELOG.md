@@ -35,6 +35,7 @@ All notable changes to the progressive-decomposition project.
 - **Go module path** — renamed from `github.com/dusk-indust/decompose` to `github.com/onedusk/pd` across all 46 files (68 import references) to match actual repository URL.
 - **Single `recommendations.md`** — the two diverging copies are merged into `docs/internal/recommendations.md`, keeping the newer per-stage review checkpoint policy; the root `docs/recommendations.md` copy is removed.
 - **`Scheduler.validate` in-degree count**: the first loop that filled `inDegree` was dead, because the next block reset every entry and counted again. The dead loop is deleted; cycle detection is unchanged.
+- **CLAUDE.md no longer calls the A2A work archived**: the "Archived: Agent-Parallel Design" section said the multi-agent path was archived, which contradicts the 2026-06-18 decision to keep it. The section is now "Agent-Parallel (A2A) Path" and says `internal/a2a`, `internal/agent`, and `internal/orchestrator` are kept and supported, with the design in `docs/decompose/agent-parallel/`.
 
 ### Fixed
 - **KuzuStore `AssessImpact` direction** — walked `DirectionDownstream` (files the changed file imports) instead of `DirectionUpstream` (files that import it), so `decompose review` Check 5, which runs on the persisted Kuzu graph, reported a changed file's dependencies as "directly affected" instead of its dependents. `MemStore` (used by the `assess_impact` MCP tool) was already correct; a Mem/Kuzu parity test now guards the two against drifting apart.
