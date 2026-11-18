@@ -335,13 +335,16 @@ func (s *DecomposeService) RunReview(
 		}
 	}
 	if gp == nil {
-		// Try to open file store.
+		// Try to open file store. A saved graph with no files (a build that
+		// matched nothing) says nothing about the codebase either.
 		graphDir := filepath.Join(s.cfg.ProjectRoot, ".decompose", "graph")
 		if _, err := os.Stat(graphDir); err == nil {
 			store, err := graph.NewKuzuFileStore(graphDir)
 			if err == nil {
 				defer store.Close()
-				gp = review.NewStoreGraphProvider(store)
+				if stats, err := store.Stats(ctx); err == nil && stats.FileCount > 0 {
+					gp = review.NewStoreGraphProvider(store)
+				}
 			}
 		}
 	}

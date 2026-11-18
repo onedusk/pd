@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/onedusk/pd/internal/graph"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -64,4 +65,37 @@ func TestGetCommitHash_UsesProjectRoot(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	assert.Equal(t, want, getCommitHash(root))
+}
+
+// TestRunReview_EmptyDiskGraph checks that a saved graph with no files is
+// not used as an index: the symbol in main.go must not be reported missing.
+func TestRunReview_EmptyDiskGraph(t *testing.T) {
+	root := t.TempDir()
+	decompDir := filepath.Join(root, "docs", "decompose", "demo")
+	require.NoError(t, os.MkdirAll(decompDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n\nfunc HandleRequest() {}\n"), 0o644))
+
+	files := map[string]string{
+		"stage-1-design-pack.md":              "# Design\n",
+		"stage-2-implementation-skeletons.md": "# Skeletons\n",
+		"stage-3-task-index.md":               "## Target Directory Tree\n\n```\nmain.go    MODIFY (M1)\n```\n",
+		"tasks_m01.md":                        "- [ ] **T-01.01 -- Change handler**\n  - **File:** `main.go` (MODIFY)\n  - **Depends on:** None\n  - **Outline:** Change `HandleRequest` to log.\n",
+	}
+	for name, content := range files {
+		require.NoError(t, os.WriteFile(filepath.Join(decompDir, name), []byte(content), 0o644))
+	}
+
+	ctx := context.Background()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".decompose"), 0o755))
+	disk, err := graph.NewKuzuFileStore(filepath.Join(root, ".decompose", "graph"))
+	require.NoError(t, err)
+	require.NoError(t, disk.InitSchema(ctx))
+	require.NoError(t, disk.Close())
+
+	require.NoError(t, runReview(ctx, root, "demo", cliFlags{}))
+
+	findings, err := os.ReadFile(filepath.Join(decompDir, "review-findings.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(findings), "**Graph indexed:** no")
+	assert.NotContains(t, string(findings), "does not exist in codebase")
 }

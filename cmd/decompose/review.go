@@ -38,9 +38,14 @@ func runReview(_ context.Context, projectRoot, name string, flags cliFlags) erro
 		store, err := graph.NewKuzuFileStore(graphDir)
 		if err == nil {
 			defer store.Close()
-			gp = review.NewStoreGraphProvider(store)
-			if flags.Verbose {
-				fmt.Fprintln(os.Stderr, "Graph store opened for review checks")
+			// A saved graph with no files says nothing about the codebase.
+			if stats, err := store.Stats(context.Background()); err == nil && stats.FileCount > 0 {
+				gp = review.NewStoreGraphProvider(store)
+				if flags.Verbose {
+					fmt.Fprintln(os.Stderr, "Graph store opened for review checks")
+				}
+			} else if flags.Verbose {
+				fmt.Fprintln(os.Stderr, "warning: graph store has no files; run build_graph to index the project")
 			}
 		} else if flags.Verbose {
 			fmt.Fprintf(os.Stderr, "warning: could not open graph store: %v\n", err)

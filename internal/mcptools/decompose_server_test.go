@@ -285,3 +285,29 @@ func TestDecomposeService_GetStageContext_GraphAvailable(t *testing.T) {
 		})
 	}
 }
+
+// TestDecomposeService_RunReview_EmptyDiskGraph checks that a saved graph
+// with no files (a build_graph run that matched nothing) is not used as an
+// index.
+func TestDecomposeService_RunReview_EmptyDiskGraph(t *testing.T) {
+	root, decompDir := writeReviewFixture(t)
+	ctx := context.Background()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".decompose"), 0o755))
+	disk, err := graph.NewKuzuFileStore(filepath.Join(root, ".decompose", "graph"))
+	require.NoError(t, err)
+	require.NoError(t, disk.InitSchema(ctx))
+	require.NoError(t, disk.Close())
+
+	svc := NewDecomposeService(newMockOrchestrator(), orchestrator.Config{ProjectRoot: root})
+	svc.SetCodeIntel(NewCodeIntelService(graph.NewMemStore(), nil))
+
+	_, out, err := svc.RunReview(ctx, nil, RunReviewInput{Name: "demo"})
+	require.NoError(t, err)
+	require.Equal(t, "completed", out.Status)
+	assert.Equal(t, 0, out.Mismatches)
+
+	findings, err := os.ReadFile(filepath.Join(decompDir, "review-findings.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(findings), "**Graph indexed:** no")
+}
