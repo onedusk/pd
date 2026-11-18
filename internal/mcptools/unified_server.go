@@ -7,6 +7,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// version is set by the linker at build time.
+var version = "dev"
+
 // NewUnifiedMCPServer creates a single MCP server that registers all tools:
 // 2 decompose tools (get_status, list_decompositions),
 // 3 hybrid tools (write_stage, get_stage_context, set_input),

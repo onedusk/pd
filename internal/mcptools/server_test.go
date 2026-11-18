@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/onedusk/pd/internal/graph"
+	"github.com/onedusk/pd/internal/orchestrator"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +24,7 @@ func setupServerClient(t *testing.T) (*mcp.ClientSession, *CodeIntelService) {
 	store := graph.NewMemStore()
 	parser := graph.NewTreeSitterParser()
 	svc := NewCodeIntelService(store, parser)
-	server := NewCodeIntelMCPServer(svc)
+	server := NewUnifiedMCPServer(newMockOrchestrator(), orchestrator.Config{ProjectRoot: t.TempDir()}, svc)
 
 	st, ct := mcp.NewInMemoryTransports()
 
@@ -47,8 +48,9 @@ func setupServerClient(t *testing.T) (*mcp.ClientSession, *CodeIntelService) {
 	return session, svc
 }
 
-// TestMCPListTools verifies that the MCP server exposes exactly 5 tools with
-// the expected names.
+// TestMCPListTools verifies that the unified MCP server with a code
+// intelligence service attached exposes the 6 decompose tools and the 6 code
+// intelligence tools.
 func TestMCPListTools(t *testing.T) {
 	session, _ := setupServerClient(t)
 	ctx := context.Background()
@@ -56,7 +58,7 @@ func TestMCPListTools(t *testing.T) {
 	result, err := session.ListTools(ctx, &mcp.ListToolsParams{})
 	require.NoError(t, err)
 
-	require.Len(t, result.Tools, 5, "expected 5 registered tools")
+	require.Len(t, result.Tools, 12, "expected 12 registered tools")
 
 	names := make([]string, len(result.Tools))
 	for i, tool := range result.Tools {
@@ -67,9 +69,16 @@ func TestMCPListTools(t *testing.T) {
 	expected := []string{
 		"assess_impact",
 		"build_graph",
+		"generate_diagram",
 		"get_clusters",
 		"get_dependencies",
+		"get_stage_context",
+		"get_status",
+		"list_decompositions",
 		"query_symbols",
+		"run_review",
+		"set_input",
+		"write_stage",
 	}
 	assert.Equal(t, expected, names)
 }
