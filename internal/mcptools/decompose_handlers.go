@@ -318,11 +318,15 @@ func (s *DecomposeService) RunReview(
 
 	outputDir := filepath.Join(s.cfg.ProjectRoot, "docs", "decompose", name)
 
-	// Build GraphProvider from CodeIntelService if available.
+	// Build GraphProvider from CodeIntelService if it has indexed anything.
+	// Before build_graph runs its store is empty and says nothing about the codebase.
 	var gp review.GraphProvider
 	if s.codeintel != nil {
-		gp = review.NewStoreGraphProvider(s.codeintel.store)
-	} else {
+		if stats, err := s.codeintel.store.Stats(ctx); err == nil && stats.FileCount > 0 {
+			gp = review.NewStoreGraphProvider(s.codeintel.store)
+		}
+	}
+	if gp == nil {
 		// Try to open file store.
 		graphDir := filepath.Join(s.cfg.ProjectRoot, ".decompose", "graph")
 		if _, err := os.Stat(graphDir); err == nil {

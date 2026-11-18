@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/onedusk/pd/internal/graph"
 	"github.com/onedusk/pd/internal/orchestrator"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
@@ -156,4 +157,99 @@ func TestUnifiedMCPServer_ToolsList(t *testing.T) {
 		"set_input",
 		"run_review",
 	}, toolNames)
+}
+
+// writeReviewFixture creates a project whose plan modifies main.go and names
+// the symbol HandleRequest, which main.go defines.
+func writeReviewFixture(t *testing.T) (root, decompDir string) {
+	t.Helper()
+	root = t.TempDir()
+	decompDir = filepath.Join(root, "docs", "decompose", "demo")
+	require.NoError(t, os.MkdirAll(decompDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n\nfunc HandleRequest() {}\n"), 0o644))
+
+	files := map[string]string{
+		"stage-3-task-index.md": "## Target Directory Tree\n\n```\nmain.go    MODIFY (M1)\n```\n",
+		"tasks_m01.md":          "- [ ] **T-01.01 — Change handler**\n  - **File:** `main.go` (MODIFY)\n  - **Depends on:** None\n  - **Outline:** Change `HandleRequest` to log.\n",
+	}
+	for name, content := range files {
+		require.NoError(t, os.WriteFile(filepath.Join(decompDir, name), []byte(content), 0o644))
+	}
+	return root, decompDir
+}
+
+// TestDecomposeService_RunReview_EmptyGraph covers run_review before
+// build_graph: the attached in-memory store has no files, so it must not be
+// treated as an index of the codebase.
+func TestDecomposeService_RunReview_EmptyGraph(t *testing.T) {
+	root, decompDir := writeReviewFixture(t)
+
+	svc := NewDecomposeService(newMockOrchestrator(), orchestrator.Config{ProjectRoot: root})
+	svc.SetCodeIntel(NewCodeIntelService(graph.NewMemStore(), nil))
+
+	_, out, err := svc.RunReview(context.Background(), nil, RunReviewInput{Name: "demo"})
+	require.NoError(t, err)
+	require.Equal(t, "completed", out.Status)
+	assert.Equal(t, 0, out.Mismatches)
+
+	findings, err := os.ReadFile(filepath.Join(decompDir, "review-findings.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(findings), "**Graph indexed:** no")
+	assert.NotContains(t, string(findings), "does not exist in codebase")
+}
+
+// TestDecomposeService_RunReview_EmptyGraphUsesDiskGraph checks that an empty
+// in-memory store falls through to the graph persisted under .decompose/graph.
+func TestDecomposeService_RunReview_EmptyGraphUsesDiskGraph(t *testing.T) {
+	root, decompDir := writeReviewFixture(t)
+	ctx := context.Background()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".decompose"), 0o755))
+	disk, err := graph.NewKuzuFileStore(filepath.Join(root, ".decompose", "graph"))
+	require.NoError(t, err)
+	require.NoError(t, disk.InitSchema(ctx))
+	require.NoError(t, disk.AddFile(ctx, graph.FileNode{Path: "main.go", Language: graph.LangGo, LOC: 3}))
+	require.NoError(t, disk.AddSymbol(ctx, graph.SymbolNode{
+		Name: "HandleRequest", Kind: graph.SymbolKindFunction, Exported: true,
+		FilePath: "main.go", StartLine: 3, EndLine: 3,
+	}))
+	require.NoError(t, disk.Close())
+
+	svc := NewDecomposeService(newMockOrchestrator(), orchestrator.Config{ProjectRoot: root})
+	svc.SetCodeIntel(NewCodeIntelService(graph.NewMemStore(), nil))
+
+	_, out, err := svc.RunReview(ctx, nil, RunReviewInput{Name: "demo"})
+	require.NoError(t, err)
+	require.Equal(t, "completed", out.Status)
+	assert.Equal(t, 0, out.Mismatches)
+
+	findings, err := os.ReadFile(filepath.Join(decompDir, "review-findings.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(findings), "**Graph indexed:** yes")
+}
+
+// TestDecomposeService_RunReview_IndexedGraph checks that an in-memory store
+// with files in it is still the one run_review uses.
+func TestDecomposeService_RunReview_IndexedGraph(t *testing.T) {
+	root, decompDir := writeReviewFixture(t)
+	ctx := context.Background()
+
+	store := graph.NewMemStore()
+	require.NoError(t, store.AddFile(ctx, graph.FileNode{Path: "main.go", Language: graph.LangGo, LOC: 3}))
+	require.NoError(t, store.AddSymbol(ctx, graph.SymbolNode{
+		Name: "HandleRequest", Kind: graph.SymbolKindFunction, Exported: true,
+		FilePath: "main.go", StartLine: 3, EndLine: 3,
+	}))
+
+	svc := NewDecomposeService(newMockOrchestrator(), orchestrator.Config{ProjectRoot: root})
+	svc.SetCodeIntel(NewCodeIntelService(store, nil))
+
+	_, out, err := svc.RunReview(ctx, nil, RunReviewInput{Name: "demo"})
+	require.NoError(t, err)
+	require.Equal(t, "completed", out.Status)
+	assert.Equal(t, 0, out.Mismatches)
+
+	findings, err := os.ReadFile(filepath.Join(decompDir, "review-findings.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(findings), "**Graph indexed:** yes")
 }
