@@ -326,6 +326,73 @@ func TestBuildGraph(t *testing.T) {
 		require.NoError(t, err)
 		assert.Greater(t, out.Stats.FileCount, 0, "should index files with default tier-1 languages")
 	})
+
+	t.Run("skips dependency, build, and hidden folders by default", func(t *testing.T) {
+		for _, dir := range []string{"node_modules", "vendor", "target", "dist", ".cache"} {
+			t.Run(dir, func(t *testing.T) {
+				repo := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(repo, "main.go"), []byte("package x\n"), 0o644))
+				require.NoError(t, os.MkdirAll(filepath.Join(repo, dir, "pkg"), 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(repo, dir, "pkg", "dep.go"), []byte("package pkg\n"), 0o644))
+
+				store := newTestStore(t)
+				parser := graph.NewTreeSitterParser()
+				defer parser.Close()
+				svc := NewCodeIntelService(store, parser)
+
+				_, out, err := svc.BuildGraph(context.Background(), nil, BuildGraphInput{
+					RepoPath:  repo,
+					Languages: []string{"go"},
+				})
+				require.NoError(t, err)
+				assert.Equal(t, 1, out.Stats.FileCount, "files under %s must not be indexed", dir)
+			})
+		}
+	})
+
+	t.Run("skips caller-named folders as well as the defaults", func(t *testing.T) {
+		repo := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(repo, "main.go"), []byte("package x\n"), 0o644))
+		for _, dir := range []string{"generated", "node_modules"} {
+			require.NoError(t, os.MkdirAll(filepath.Join(repo, dir), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(repo, dir, "dep.go"), []byte("package dep\n"), 0o644))
+		}
+
+		store := newTestStore(t)
+		parser := graph.NewTreeSitterParser()
+		defer parser.Close()
+		svc := NewCodeIntelService(store, parser)
+
+		_, out, err := svc.BuildGraph(context.Background(), nil, BuildGraphInput{
+			RepoPath:    repo,
+			Languages:   []string{"go"},
+			ExcludeDirs: []string{"generated"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, 1, out.Stats.FileCount)
+	})
+
+	t.Run("indexes a repository whose own folder has a skipped name", func(t *testing.T) {
+		for _, dir := range []string{"dist", ".hidden"} {
+			t.Run(dir, func(t *testing.T) {
+				repo := filepath.Join(t.TempDir(), dir)
+				require.NoError(t, os.MkdirAll(repo, 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(repo, "main.go"), []byte("package x\n"), 0o644))
+
+				store := newTestStore(t)
+				parser := graph.NewTreeSitterParser()
+				defer parser.Close()
+				svc := NewCodeIntelService(store, parser)
+
+				_, out, err := svc.BuildGraph(context.Background(), nil, BuildGraphInput{
+					RepoPath:  repo,
+					Languages: []string{"go"},
+				})
+				require.NoError(t, err)
+				assert.Equal(t, 1, out.Stats.FileCount)
+			})
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

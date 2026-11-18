@@ -105,6 +105,11 @@ func (s *CodeIntelService) BuildGraph(
 			if name == ".git" || excludeSet[name] {
 				return filepath.SkipDir
 			}
+			// Skip dependency, build output, and hidden folders by default.
+			// The repository root is walked whatever it is called.
+			if path != input.RepoPath && (strings.HasPrefix(name, ".") || name == "node_modules" || name == "vendor" || name == "target" || name == "dist") {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
