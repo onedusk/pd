@@ -633,6 +633,43 @@ func TestAssessImpact_MemAndKuzuAgree(t *testing.T) {
 	}
 }
 
+// TestGetDependencies_MemAndKuzuAgree guards against the two Store
+// implementations drifting apart on which edge kinds traversal follows. The
+// graph mixes IMPORTS with the CALLS, DEFINES, and BELONGS edges build_graph
+// stores; only IMPORTS may be followed.
+func TestGetDependencies_MemAndKuzuAgree(t *testing.T) {
+	ctx := context.Background()
+	kuzu := newTestStore(t)
+	mem := NewMemStore()
+
+	for _, s := range []Store{kuzu, mem} {
+		for _, p := range []string{"a.go", "b.go", "c.go"} {
+			require.NoError(t, s.AddFile(ctx, FileNode{Path: p, Language: LangGo, LOC: 10}))
+		}
+		require.NoError(t, s.AddSymbol(ctx, SymbolNode{Name: "Run", Kind: SymbolKindFunction, Exported: true, FilePath: "a.go", StartLine: 3, EndLine: 5}))
+		require.NoError(t, s.AddCluster(ctx, ClusterNode{Name: "pkg/", CohesionScore: 1, Members: []string{"a.go", "b.go"}}))
+
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "b.go", Kind: EdgeKindImports}))
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "b.go", TargetID: "c.go", Kind: EdgeKindImports}))
+		// CALLS as the extractors emit it: file path to callee name.
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "fmt.Sprintf", Kind: EdgeKindCalls}))
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "c.go", TargetID: "fmt.Sprintf", Kind: EdgeKindCalls}))
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "a.go:Run:3", Kind: EdgeKindDefines}))
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "pkg/", Kind: EdgeKindBelongs}))
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "b.go", TargetID: "pkg/", Kind: EdgeKindBelongs}))
+	}
+
+	for _, id := range []string{"a.go", "b.go", "c.go", "fmt.Sprintf", "pkg/", "a.go:Run:3"} {
+		for _, dir := range []Direction{DirectionDownstream, DirectionUpstream} {
+			kc, err := kuzu.GetDependencies(ctx, id, dir, 5)
+			require.NoError(t, err)
+			mc, err := mem.GetDependencies(ctx, id, dir, 5)
+			require.NoError(t, err)
+			assert.Equal(t, chainEnds(kc), chainEnds(mc), "node=%s direction=%s", id, dir)
+		}
+	}
+}
+
 // TestSameNamedSymbols_MemAndKuzuKeepAll checks that both stores keep every
 // symbol when one file defines the same name more than once (methods on
 // different receivers), and that GetSymbol returns the first by start line.

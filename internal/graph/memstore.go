@@ -116,7 +116,7 @@ func (m *MemStore) QuerySymbols(_ context.Context, query string, limit int) ([]S
 	return results, nil
 }
 
-// GetDependencies performs a BFS on edges from nodeID in the given direction,
+// GetDependencies performs a BFS on IMPORTS edges from nodeID in the given direction,
 // up to maxDepth hops. It returns one DependencyChain per reachable node.
 func (m *MemStore) GetDependencies(_ context.Context, nodeID string, direction Direction, maxDepth int) ([]DependencyChain, error) {
 	m.mu.RLock()
@@ -162,9 +162,13 @@ func (m *MemStore) GetDependencies(_ context.Context, nodeID string, direction D
 }
 
 // neighbors returns IDs reachable from id in one hop along the given direction.
+// Only IMPORTS edges are followed, matching KuzuStore.fileNeighbors.
 func (m *MemStore) neighbors(id string, direction Direction) []string {
 	var result []string
 	for _, e := range m.edges {
+		if e.Kind != EdgeKindImports {
+			continue
+		}
 		switch direction {
 		case DirectionDownstream:
 			// downstream: what id depends on -> follow edges where SourceID matches
