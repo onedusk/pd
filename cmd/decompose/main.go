@@ -59,7 +59,7 @@ func run(args []string) error {
 	fs.StringVar(&flags.InputFile, "input", "", "path to a high-level input file (idea, spec, or plan) to seed Stage 1")
 	fs.BoolVar(&flags.SkipVerification, "skip-verification", false, "skip post-stage verification")
 	fs.StringVar(&flags.ReviewMode, "review-mode", "cli", "review strategy for implement command: cli, pr, file")
-	fs.IntVar(&flags.MaxConcurrent, "max-concurrent", 1, "max parallel Claude Code sessions for implement command; sessions share one working tree, so values above 1 can mix milestones in one review")
+	fs.IntVar(&flags.MaxConcurrent, "max-concurrent", 1, "max parallel Claude Code sessions for implement command; sessions share one working tree and cli and file review modes do not commit between milestones, so a review lists every change so far; values above 1 also run milestones in that tree at once")
 	fs.BoolVar(&flags.Force, "force", false, "overwrite existing files (init, stage output)")
 	fs.BoolVar(&flags.SkipReview, "skip-review", false, "suppress review warnings when implementing")
 	fs.BoolVar(&flags.Version, "version", false, "print version and exit")

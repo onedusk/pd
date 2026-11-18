@@ -118,7 +118,7 @@ decompose --project-root /path/to/project --serve-mcp
 | `--agents` | (auto-detect) | Comma-separated A2A agent endpoint URLs |
 | `--single-agent` | `false` | Force single-agent mode |
 | `--serve-mcp` | `false` | Run as MCP server on stdio |
-| `--max-concurrent` | `1` | Max parallel Claude Code sessions for `decompose implement`. Sessions share one working tree, so values above 1 can mix milestones in one review |
+| `--max-concurrent` | `1` | Max parallel Claude Code sessions for `decompose implement`. Sessions share one working tree, and the `cli` and `file` review modes do not commit between milestones, so a review lists every change made so far, not only that milestone's. Values above 1 also run milestones in that tree at once |
 | `--force` | `false` | Overwrite existing files. Without it a stage run stops when a stage output file already exists, and `decompose init` keeps files it finds |
 | `--verbose` | `false` | Enable verbose output |
 | `--version` | | Print version and exit |
