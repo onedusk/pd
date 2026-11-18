@@ -80,6 +80,8 @@ The upcoming dusk test (2,266 files, 22,487 edges) is the real proving ground. A
 
 ## Recommendation 3: Freeze Multi-Agent Development
 
+> **Superseded 2026-06-18.** The repo owner decided to keep the A2A multi-agent path (`internal/a2a`, `internal/agent`, `internal/orchestrator`) as supported code. The actions below are withdrawn. The text is kept as the record of the 2026-03-13 reasoning.
+
 The A2A agent pipeline is interesting engineering that solves a problem not yet demonstrated to exist.
 
 The agent-parallel decomposition planned 73 tasks across 8 milestones. Zero have been completed. The code that exists was written speculatively, ahead of the decomposition's own task specs.
@@ -150,7 +152,7 @@ After implementing Recommendations 1 and 3, the binary should contain exactly:
 
 **Total: ~8,500 lines across 7 internal packages.** Down from ~24,000 lines across 13 packages.
 
-What gets shelved: `internal/a2a/` (3,100), `internal/agent/` (4,300), `internal/orchestrator/` (5,500). What gets removed: workflow tool handlers in `internal/mcptools/decompose_handlers.go`, decompose-specific MCP server registrations for workflow tools.
+What gets shelved (superseded 2026-06-18: these packages are kept, see Recommendation 3): `internal/a2a/` (3,100), `internal/agent/` (4,300), `internal/orchestrator/` (5,500). What gets removed: workflow tool handlers in `internal/mcptools/decompose_handlers.go`, decompose-specific MCP server registrations for workflow tools.
 
 ### CGO Consideration
 
@@ -183,7 +185,7 @@ This is the lowest-risk, highest-immediate-impact action and should happen first
 ### CLAUDE.md
 
 1. Update the opening paragraph. "There is no build system, no test suite, and no application code to run" is no longer accurate. The repo has a Makefile, Go tests, and a Go binary.
-2. Remove or archive the "Internal Design (Agent-Parallel Evolution)" section. Replace with a brief note that agent-parallel design docs exist in `experimental/` or `docs/archive/` as exploratory work.
+2. Remove or archive the "Internal Design (Agent-Parallel Evolution)" section. Replace with a brief note that agent-parallel design docs exist in `experimental/` or `docs/archive/` as exploratory work. (Superseded 2026-06-18: CLAUDE.md now describes the A2A path as kept, see Recommendation 3.)
 3. Add a section on the Go binary: what it provides (code intelligence, review checks, project initialization), how to build it, how to run it as MCP server.
 
 ---
@@ -210,7 +212,7 @@ This is the lowest-risk, highest-immediate-impact action and should happen first
 |---|---------------|----------|-----------|
 | 1 | Workflow architecture | Path B+C hybrid (skill-driven, scoped advisory hook) | 9/10 quality without workflow tools; stop fighting the model |
 | 2 | Code intelligence scope | Keep all tools, anchor to Stage 1 + /review, question-driven at 2-4 | Proven at two touchpoints; don't force elsewhere but don't lock out |
-| 3 | Multi-agent development | Freeze, shelve to experimental with archival note | 13K lines of unproven coordination infrastructure |
+| 3 | Multi-agent development | Freeze, shelve to experimental with archival note. **Superseded 2026-06-18: A2A is kept** | 13K lines of unproven coordination infrastructure |
 | 4 | Evaluation | Run pairwise comparison on 3 projects (including dusk at scale) | Need n>1 evidence; dusk test is brownfield/large condition |
 | 5 | Binary scope | Reduce to graph + review + CLI (~8.5K lines) | Cut 65% of code surface, keep what works |
 | 6 | Skill/CLAUDE.md | Remove MCP-first steering, add question-driven prompts, add /review points | Align documentation with proven behavior |
@@ -221,9 +223,9 @@ This is the lowest-risk, highest-immediate-impact action and should happen first
 
 1. **SKILL.md and CLAUDE.md updates** (Rec 6) -- lowest risk, highest immediate impact. Aligns steering with proven behavior. Add question-driven prompts and /review invocation points.
 2. **Remove workflow MCP tools** (Rec 1) -- delete tool registrations and handlers. The SKILL.md update makes native tools primary. Scope the advisory hook for /review findings.
-3. **Shelve multi-agent code** (Rec 3) -- move A2A, agent, orchestrator to experimental branch. Write archival note documenting why and what signal justifies revival. Mechanical refactor.
+3. **Shelve multi-agent code** (Rec 3) -- move A2A, agent, orchestrator to experimental branch. Write archival note documenting why and what signal justifies revival. Mechanical refactor. **Superseded 2026-06-18: A2A is kept, skip this step.**
 4. **Run dusk evaluation** (Rec 4, partial) -- decompose against 2,266-file codebase with code intelligence active. This is the brownfield/large test. Observe whether question-driven prompts produce natural tool usage at Stages 2-4.
 5. **Complete evaluation** (Rec 4, remaining) -- run greenfield and brownfield/small tests. Compare Condition A vs B. Generate decision data.
-6. **Binary reduction** (Rec 5) -- simplify MCP server registration and CLI subcommands after shelved code is separated.
+6. **Binary reduction** (Rec 5) -- simplify MCP server registration and CLI subcommands after shelved code is separated. (Step 3 is superseded, so no code is shelved first.)
 
 Steps 1-3 can be done in a single focused session. Step 4 happens naturally as the next real project. Steps 5-6 follow from accumulated evidence.
