@@ -48,7 +48,7 @@ func runReview(_ context.Context, projectRoot, name string, flags cliFlags) erro
 	}
 
 	// Get git commit hash.
-	commitHash := getCommitHash()
+	commitHash := getCommitHash(projectRoot)
 
 	cfg := review.ReviewConfig{
 		ProjectRoot: projectRoot,
@@ -205,9 +205,12 @@ func checkReviewBeforeImplement(projectRoot, name string, skipReview bool) {
 	}
 }
 
-// getCommitHash returns the current git HEAD commit hash, or empty string.
-func getCommitHash() string {
-	out, err := exec.Command("git", "rev-parse", "HEAD").Output()
+// getCommitHash returns the git HEAD commit hash of the repository at
+// projectRoot, or empty string.
+func getCommitHash(projectRoot string) string {
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = projectRoot
+	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}

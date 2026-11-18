@@ -59,7 +59,7 @@ func run(args []string) error {
 	fs.StringVar(&flags.InputFile, "input", "", "path to a high-level input file (idea, spec, or plan) to seed Stage 1")
 	fs.BoolVar(&flags.SkipVerification, "skip-verification", false, "skip post-stage verification")
 	fs.StringVar(&flags.ReviewMode, "review-mode", "cli", "review strategy for implement command: cli, pr, file")
-	fs.IntVar(&flags.MaxConcurrent, "max-concurrent", 3, "max parallel Claude Code sessions for implement command")
+	fs.IntVar(&flags.MaxConcurrent, "max-concurrent", 1, "max parallel Claude Code sessions for implement command; sessions share one working tree, so values above 1 can mix milestones in one review")
 	fs.BoolVar(&flags.Force, "force", false, "overwrite existing files (init, stage output)")
 	fs.BoolVar(&flags.SkipReview, "skip-review", false, "suppress review warnings when implementing")
 	fs.BoolVar(&flags.Version, "version", false, "print version and exit")
@@ -330,7 +330,7 @@ func runImplement(ctx context.Context, projectRoot, name string, flags cliFlags)
 	var review orchestrator.ReviewStrategy
 	switch flags.ReviewMode {
 	case "pr":
-		review = orchestrator.NewPRReviewStrategy("main", "origin")
+		review = orchestrator.NewPRReviewStrategy(projectRoot, "main", "origin")
 	case "file":
 		review = orchestrator.NewFileReviewStrategy(filepath.Join(outputDir, "reviews"))
 	default:

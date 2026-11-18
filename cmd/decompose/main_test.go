@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -38,4 +39,22 @@ func TestRun_SingleStage_WritesRequestedStageAndHonorsForce(t *testing.T) {
 	data, readErr = os.ReadFile(stage2)
 	require.NoError(t, readErr)
 	assert.NotEqual(t, "# Finished skeletons\n", string(data))
+}
+
+// TestRun_HelpShowsMaxConcurrentDefaultOfOne checks that implement sessions
+// run one at a time unless the user asks for more: they share one working
+// tree, so the --max-concurrent default must be 1.
+func TestRun_HelpShowsMaxConcurrentDefaultOfOne(t *testing.T) {
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	orig := os.Stderr
+	os.Stderr = w
+	runErr := run([]string{"--help"})
+	os.Stderr = orig
+	require.NoError(t, w.Close())
+	require.NoError(t, runErr)
+
+	out, err := io.ReadAll(r)
+	require.NoError(t, err)
+	assert.Regexp(t, `-max-concurrent int\n[^\n]*\(default 1\)`, string(out))
 }

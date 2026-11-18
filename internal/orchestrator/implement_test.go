@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -156,6 +157,49 @@ func TestImplementPipeline_ImplementerFails(t *testing.T) {
 	err = pipeline.Run(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "claude process crashed")
+
+	pipeline.Close()
+}
+
+// TestImplementPipeline_DefaultConcurrencyIsOne checks that a config with no
+// MaxConcurrent runs one session at a time. Sessions share one working tree,
+// so the fallback must not start several of them together.
+func TestImplementPipeline_DefaultConcurrencyIsOne(t *testing.T) {
+	milestones := []MilestoneNode{
+		{ID: "M1", Name: "First"},
+		{ID: "M2", Name: "Second"},
+		{ID: "M3", Name: "Third"},
+	}
+
+	scheduler, err := NewScheduler(milestones)
+	require.NoError(t, err)
+
+	var mu sync.Mutex
+	running, peak := 0, 0
+	impl := func(_ context.Context, _ *MilestoneNode) ([]ImplementationArtifact, error) {
+		mu.Lock()
+		running++
+		if running > peak {
+			peak = running
+		}
+		mu.Unlock()
+		time.Sleep(20 * time.Millisecond)
+		mu.Lock()
+		running--
+		mu.Unlock()
+		return nil, nil
+	}
+
+	pipeline := NewImplementPipeline(
+		ImplementConfig{},
+		scheduler,
+		&autoApproveReview{},
+		impl,
+	)
+
+	require.NoError(t, pipeline.Run(context.Background()))
+	assert.Equal(t, 1, peak)
+	assert.True(t, scheduler.AllCompleted())
 
 	pipeline.Close()
 }

@@ -72,7 +72,7 @@ func (ip *ImplementPipeline) Close() {
 func (ip *ImplementPipeline) Run(ctx context.Context) error {
 	maxConcurrent := ip.cfg.MaxConcurrent
 	if maxConcurrent <= 0 {
-		maxConcurrent = 3
+		maxConcurrent = 1
 	}
 
 	for {

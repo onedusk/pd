@@ -118,6 +118,7 @@ decompose --project-root /path/to/project --serve-mcp
 | `--agents` | (auto-detect) | Comma-separated A2A agent endpoint URLs |
 | `--single-agent` | `false` | Force single-agent mode |
 | `--serve-mcp` | `false` | Run as MCP server on stdio |
+| `--max-concurrent` | `1` | Max parallel Claude Code sessions for `decompose implement`. Sessions share one working tree, so values above 1 can mix milestones in one review |
 | `--verbose` | `false` | Enable verbose output |
 | `--version` | | Print version and exit |
 

@@ -96,41 +96,42 @@ func (c *CLIReviewStrategy) RequestReview(_ context.Context, milestone *Mileston
 // PRReviewStrategy implements ReviewStrategy by creating a GitHub PR and
 // waiting for it to be merged or closed.
 type PRReviewStrategy struct {
-	baseBranch string
-	remote     string
+	projectRoot string
+	baseBranch  string
+	remote      string
 }
 
 // NewPRReviewStrategy creates a PRReviewStrategy targeting the given base
-// branch and remote.
-func NewPRReviewStrategy(baseBranch, remote string) *PRReviewStrategy {
-	return &PRReviewStrategy{baseBranch: baseBranch, remote: remote}
+// branch and remote. git and gh run in projectRoot.
+func NewPRReviewStrategy(projectRoot, baseBranch, remote string) *PRReviewStrategy {
+	return &PRReviewStrategy{projectRoot: projectRoot, baseBranch: baseBranch, remote: remote}
 }
 
 func (p *PRReviewStrategy) RequestReview(ctx context.Context, milestone *MilestoneNode, artifacts []ImplementationArtifact) (ReviewDecision, error) {
 	branchName := fmt.Sprintf("implement/%s", strings.ToLower(milestone.ID))
 
 	// Create and checkout branch.
-	if err := runGit(ctx, "checkout", "-b", branchName); err != nil {
+	if err := runGit(ctx, p.projectRoot, "checkout", "-b", branchName); err != nil {
 		return ReviewRejected, fmt.Errorf("create branch: %w", err)
 	}
 
 	// Stage changed files.
 	for _, a := range artifacts {
 		if a.Action == "DELETE" {
-			_ = runGit(ctx, "rm", a.Path)
+			_ = runGit(ctx, p.projectRoot, "rm", a.Path)
 		} else {
-			_ = runGit(ctx, "add", a.Path)
+			_ = runGit(ctx, p.projectRoot, "add", a.Path)
 		}
 	}
 
 	// Commit.
 	commitMsg := fmt.Sprintf("implement %s: %s", milestone.ID, milestone.Name)
-	if err := runGit(ctx, "commit", "-m", commitMsg); err != nil {
+	if err := runGit(ctx, p.projectRoot, "commit", "-m", commitMsg); err != nil {
 		return ReviewRejected, fmt.Errorf("commit: %w", err)
 	}
 
 	// Push.
-	if err := runGit(ctx, "push", "-u", p.remote, branchName); err != nil {
+	if err := runGit(ctx, p.projectRoot, "push", "-u", p.remote, branchName); err != nil {
 		return ReviewRejected, fmt.Errorf("push: %w", err)
 	}
 
@@ -142,6 +143,7 @@ func (p *PRReviewStrategy) RequestReview(ctx context.Context, milestone *Milesto
 		"--title", commitMsg,
 		"--body", body,
 	)
+	prCmd.Dir = p.projectRoot
 	if output, err := prCmd.CombinedOutput(); err != nil {
 		return ReviewRejected, fmt.Errorf("create PR: %w (%s)", err, string(output))
 	}
@@ -155,7 +157,7 @@ func (p *PRReviewStrategy) RequestReview(ctx context.Context, milestone *Milesto
 		case <-ctx.Done():
 			return ReviewRejected, ctx.Err()
 		case <-ticker.C:
-			state, err := getPRState(ctx, branchName)
+			state, err := getPRState(ctx, p.projectRoot, branchName)
 			if err != nil {
 				continue // transient error, keep polling
 			}
@@ -170,8 +172,9 @@ func (p *PRReviewStrategy) RequestReview(ctx context.Context, milestone *Milesto
 	}
 }
 
-func runGit(ctx context.Context, args ...string) error {
+func runGit(ctx context.Context, dir string, args ...string) error {
 	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s: %s", err, string(output))
@@ -179,8 +182,9 @@ func runGit(ctx context.Context, args ...string) error {
 	return nil
 }
 
-func getPRState(ctx context.Context, branch string) (string, error) {
+func getPRState(ctx context.Context, dir, branch string) (string, error) {
 	cmd := exec.CommandContext(ctx, "gh", "pr", "view", branch, "--json", "state", "-q", ".state")
+	cmd.Dir = dir
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
