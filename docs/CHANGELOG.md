@@ -48,6 +48,9 @@ All notable changes to the progressive-decomposition project.
 - **Stage 4 never detected for skill-produced decompositions** — status only looked for `stage-4-task-specifications.md`, but the `/decompose` skill writes Stage 4 as `tasks_mNN.md`. `decompose review` and `decompose implement` therefore refused every skill-made decomposition, and `status`/`get_status` reported Stage 4 as next forever. Stage 4 is now complete when either layout is present.
 - **Pipeline runs replaced finished stage files with placeholder text**: `decompose <name>` rewrote existing stage files with stubs, and `decompose <name> 2` wrote a Stage 0 stub because executors guessed the stage as the lowest one missing from the inputs. The requested stage is now passed to the executor, and a run refuses to write a stage file that already exists unless `--force` is set (a full run checks every stage before writing anything).
 
+### Removed
+- **`run_stage` MCP tool**: it ignored its `name` input and, because `--serve-mcp` builds a config with no name or output directory, wrote a Stage 0 stub into the working directory of the server process. The registration, the `RunStage` handler, and its input/output types are gone; `write_stage` covers this path.
+
 ### Added (prior)
 - **`--help` flag and usage output** — custom help with synopsis, subcommand table, stage descriptions, examples, and all flags. `--help` exits cleanly (code 0); bare `decompose` shows usage then errors.
 - **`decompose status [name]`** CLI command — shows stage completion for one or all decompositions. Shared `internal/status` package used by both CLI and MCP `get_status` tool.

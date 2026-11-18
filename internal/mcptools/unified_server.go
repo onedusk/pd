@@ -8,7 +8,7 @@ import (
 )
 
 // NewUnifiedMCPServer creates a single MCP server that registers all tools:
-// 3 decompose tools (run_stage, get_status, list_decompositions),
+// 2 decompose tools (get_status, list_decompositions),
 // 3 hybrid tools (write_stage, get_stage_context, set_input),
 // 1 review tool (run_review),
 // and 5 code intelligence tools (build_graph, query_symbols, get_dependencies,
@@ -25,11 +25,6 @@ func NewUnifiedMCPServer(pipeline orchestrator.Orchestrator, cfg orchestrator.Co
 	}, nil)
 
 	// --- Decompose tools ---
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "run_stage",
-		Description: "Execute a single decomposition pipeline stage (0-4). Returns the files written. In basic/mcp-only mode this produces template scaffolds; use write_stage for rich content.",
-	}, decomposeSvc.RunStage)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_status",

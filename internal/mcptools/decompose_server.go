@@ -4,21 +4,6 @@ package mcptools
 // These tools are exposed when the binary runs as an MCP server for Claude Code.
 // They allow the /decompose skill to call structured tools instead of shelling out.
 
-// RunStageInput is the input for the run_stage MCP tool.
-type RunStageInput struct {
-	Name        string `json:"name" jsonschema:"decomposition name (kebab-case)"`
-	Stage       int    `json:"stage" jsonschema:"pipeline stage to run (0-4)"`
-	ProjectRoot string `json:"projectRoot,omitempty" jsonschema:"path to the target project (default: cwd)"`
-}
-
-// RunStageOutput is the result of the run_stage MCP tool.
-type RunStageOutput struct {
-	FilesWritten []string `json:"filesWritten"`
-	Stage        int      `json:"stage"`
-	Status       string   `json:"status"` // "completed" or "failed"
-	Message      string   `json:"message,omitempty"`
-}
-
 // GetStatusInput is the input for the get_status MCP tool.
 type GetStatusInput struct {
 	Name string `json:"name" jsonschema:"decomposition name"`

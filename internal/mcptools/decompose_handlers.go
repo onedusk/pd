@@ -17,7 +17,7 @@ import (
 )
 
 // DecomposeService handles MCP tool calls for the decompose server mode.
-// It wraps an Orchestrator to execute pipeline stages and query status.
+// No handler reads the pipeline field since run_stage was removed.
 type DecomposeService struct {
 	pipeline  orchestrator.Orchestrator
 	cfg       orchestrator.Config
@@ -39,37 +39,6 @@ func NewDecomposeService(pipeline orchestrator.Orchestrator, cfg orchestrator.Co
 // SetCodeIntel attaches a CodeIntelService so RunReview can use graph-based checks.
 func (s *DecomposeService) SetCodeIntel(ci *CodeIntelService) {
 	s.codeintel = ci
-}
-
-// RunStage executes a single pipeline stage and returns the files written.
-func (s *DecomposeService) RunStage(
-	ctx context.Context,
-	_ *mcp.CallToolRequest,
-	input RunStageInput,
-) (*mcp.CallToolResult, RunStageOutput, error) {
-	if input.Stage < 0 || input.Stage > 4 {
-		return nil, RunStageOutput{
-			Stage:   input.Stage,
-			Status:  "failed",
-			Message: fmt.Sprintf("stage must be 0-4, got %d", input.Stage),
-		}, fmt.Errorf("invalid stage number: %d", input.Stage)
-	}
-
-	stage := orchestrator.Stage(input.Stage)
-	result, err := s.pipeline.RunStage(ctx, stage)
-	if err != nil {
-		return nil, RunStageOutput{
-			Stage:   input.Stage,
-			Status:  "failed",
-			Message: err.Error(),
-		}, nil
-	}
-
-	return nil, RunStageOutput{
-		FilesWritten: result.FilePaths,
-		Stage:        input.Stage,
-		Status:       "completed",
-	}, nil
 }
 
 // GetStatus reports which stages are complete for a named decomposition.

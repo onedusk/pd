@@ -7,8 +7,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// NewDecomposeMCPServer creates an MCP server with the 3 decompose tools registered:
-// run_stage, get_status, and list_decompositions.
+// NewDecomposeMCPServer creates an MCP server with the 2 decompose tools registered:
+// get_status and list_decompositions.
 func NewDecomposeMCPServer(pipeline orchestrator.Orchestrator, cfg orchestrator.Config) *mcp.Server {
 	svc := NewDecomposeService(pipeline, cfg)
 
@@ -16,11 +16,6 @@ func NewDecomposeMCPServer(pipeline orchestrator.Orchestrator, cfg orchestrator.
 		Name:    "decompose",
 		Version: version,
 	}, nil)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "run_stage",
-		Description: "Execute a single decomposition pipeline stage (0-4). Returns the files written.",
-	}, svc.RunStage)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_status",

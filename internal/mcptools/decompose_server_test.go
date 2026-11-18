@@ -46,38 +46,6 @@ func (m *mockOrchestrator) Progress() <-chan orchestrator.ProgressEvent {
 	return m.progressCh
 }
 
-func TestDecomposeService_RunStage(t *testing.T) {
-	mock := newMockOrchestrator()
-	mock.runStageResult = &orchestrator.StageResult{
-		Stage:     orchestrator.StageDevelopmentStandards,
-		FilePaths: []string{"/out/stage-0-development-standards.md"},
-	}
-
-	cfg := orchestrator.Config{
-		Name:        "test",
-		ProjectRoot: t.TempDir(),
-	}
-
-	svc := NewDecomposeService(mock, cfg)
-	ctx := context.Background()
-
-	_, out, err := svc.RunStage(ctx, nil, RunStageInput{Name: "test", Stage: 0})
-	require.NoError(t, err)
-	assert.Equal(t, "completed", out.Status)
-	assert.Equal(t, 0, out.Stage)
-	assert.Equal(t, []string{"/out/stage-0-development-standards.md"}, out.FilesWritten)
-}
-
-func TestDecomposeService_RunStage_InvalidStage(t *testing.T) {
-	mock := newMockOrchestrator()
-	cfg := orchestrator.Config{Name: "test", ProjectRoot: t.TempDir()}
-	svc := NewDecomposeService(mock, cfg)
-
-	_, _, err := svc.RunStage(context.Background(), nil, RunStageInput{Name: "test", Stage: 5})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid stage")
-}
-
 func TestDecomposeService_GetStatus_Empty(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := orchestrator.Config{Name: "test", ProjectRoot: tmpDir}
@@ -175,8 +143,47 @@ func TestDecomposeMCPServer_ToolsList(t *testing.T) {
 		toolNames[i] = tool.Name
 	}
 
-	assert.Contains(t, toolNames, "run_stage")
 	assert.Contains(t, toolNames, "get_status")
 	assert.Contains(t, toolNames, "list_decompositions")
-	assert.Len(t, tools.Tools, 3)
+	assert.Len(t, tools.Tools, 2)
+}
+
+// TestUnifiedMCPServer_ToolsList checks the decompose tools the unified server
+// registers when no code intelligence service is attached. run_stage must not
+// be among them: it ignored its name input and wrote into the working
+// directory of the server process.
+func TestUnifiedMCPServer_ToolsList(t *testing.T) {
+	mock := newMockOrchestrator()
+	cfg := orchestrator.Config{ProjectRoot: t.TempDir()}
+
+	server := NewUnifiedMCPServer(mock, cfg, nil)
+
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go server.Run(ctx, serverTransport)
+
+	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "dev"}, nil)
+	session, err := mcpClient.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+
+	tools, err := session.ListTools(ctx, nil)
+	require.NoError(t, err)
+
+	toolNames := make([]string, len(tools.Tools))
+	for i, tool := range tools.Tools {
+		toolNames[i] = tool.Name
+	}
+
+	assert.NotContains(t, toolNames, "run_stage")
+	assert.ElementsMatch(t, []string{
+		"get_status",
+		"list_decompositions",
+		"write_stage",
+		"get_stage_context",
+		"set_input",
+		"run_review",
+	}, toolNames)
 }
