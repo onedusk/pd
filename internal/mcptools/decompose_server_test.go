@@ -170,7 +170,7 @@ func writeReviewFixture(t *testing.T) (root, decompDir string) {
 
 	files := map[string]string{
 		"stage-3-task-index.md": "## Target Directory Tree\n\n```\nmain.go    MODIFY (M1)\n```\n",
-		"tasks_m01.md":          "- [ ] **T-01.01 — Change handler**\n  - **File:** `main.go` (MODIFY)\n  - **Depends on:** None\n  - **Outline:** Change `HandleRequest` to log.\n",
+		"tasks_m01.md":          "- [ ] **T-01.01 -- Change handler**\n  - **File:** `main.go` (MODIFY)\n  - **Depends on:** None\n  - **Outline:** Change `HandleRequest` to log.\n",
 	}
 	for name, content := range files {
 		require.NoError(t, os.WriteFile(filepath.Join(decompDir, name), []byte(content), 0o644))
