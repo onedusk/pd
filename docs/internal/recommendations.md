@@ -150,7 +150,7 @@ After implementing Recommendations 1 and 3, the binary should contain exactly:
 | `internal/skilldata/` | Embedded skill files for `decompose init` | 20 |
 | `cmd/decompose/` | CLI entry, init, status, review, export, diagram, augment | 500 |
 
-**Total: ~8,500 lines across 7 internal packages.** Down from ~24,000 lines across 13 packages.
+**Total: ~8,500 lines across 7 internal packages.** Down from ~24,000 lines across 13 packages. (Superseded 2026-06-18: this total assumes the three A2A packages are shelved; they are kept, see Recommendation 3.)
 
 What gets shelved (superseded 2026-06-18: these packages are kept, see Recommendation 3): `internal/a2a/` (3,100), `internal/agent/` (4,300), `internal/orchestrator/` (5,500). What gets removed: workflow tool handlers in `internal/mcptools/decompose_handlers.go`, decompose-specific MCP server registrations for workflow tools.
 
@@ -214,7 +214,7 @@ This is the lowest-risk, highest-immediate-impact action and should happen first
 | 2 | Code intelligence scope | Keep all tools, anchor to Stage 1 + /review, question-driven at 2-4 | Proven at two touchpoints; don't force elsewhere but don't lock out |
 | 3 | Multi-agent development | Freeze, shelve to experimental with archival note. **Superseded 2026-06-18: A2A is kept** | 13K lines of unproven coordination infrastructure |
 | 4 | Evaluation | Run pairwise comparison on 3 projects (including dusk at scale) | Need n>1 evidence; dusk test is brownfield/large condition |
-| 5 | Binary scope | Reduce to graph + review + CLI (~8.5K lines) | Cut 65% of code surface, keep what works |
+| 5 | Binary scope | Reduce to graph + review + CLI (~8.5K lines). **Superseded 2026-06-18 where it depends on shelving A2A** | Cut 65% of code surface, keep what works |
 | 6 | Skill/CLAUDE.md | Remove MCP-first steering, add question-driven prompts, add /review points | Align documentation with proven behavior |
 
 ---

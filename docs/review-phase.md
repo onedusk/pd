@@ -54,7 +54,7 @@ For every file listed in the directory tree:
 | Action in Plan | Expected State | Finding if Wrong |
 |----------------|---------------|-----------------|
 | CREATE | File does NOT exist | MISMATCH -- file already exists, task should be MODIFY or plan needs revision |
-| MODIFY | File DOES exist | MISMATCH -- file missing, task should be CREATE or dependency is wrong |
+| MODIFY | File DOES exist | MISMATCH -- file missing, task should be CREATE or dependency is wrong. Not reported when the plan also has a CREATE for the same file |
 | DELETE | File DOES exist | OK (expected) |
 | DELETE | File does NOT exist | STALE -- file already removed or was never created |
 

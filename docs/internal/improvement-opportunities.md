@@ -256,7 +256,8 @@ The A2A reversal makes three previously "settled" items genuinely open. These ar
 silently implement — they need an explicit call:
 
 1. **Rec 1 — drop the six workflow MCP tools** (`write_stage`, `get_stage_context`, `set_input`,
-   `run_stage`, `get_status`, `list_decompositions`; still registered at `unified_server.go:29-59`).
+   `run_stage`, `get_status`, `list_decompositions`; `run_stage` was removed on 2026-11-18, the other
+   five are still registered in `unified_server.go`).
    The original rationale (Claude prefers native tools; the skill carries the workflow) is
    independent of A2A and still holds — but `run_stage` drives the now-kept orchestrator pipeline,
    so confirm whether these stay or go. This gates drift-5d, onboard-4, cli-drift-1, mcp-1.

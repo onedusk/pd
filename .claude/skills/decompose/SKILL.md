@@ -87,7 +87,7 @@ When the `decompose` MCP server is available, these tools provide structural ana
 |------|---------|
 | `build_graph` | Index repository with tree-sitter -- parse source files, extract symbols, build dependency graph, compute file clusters. Skips `node_modules`, `vendor`, `target`, `dist`, and dot-folders by default |
 | `query_symbols` | Search for functions, types, interfaces, classes by name or kind |
-| `get_dependencies` | Traverse dependency graph upstream (what it depends on) or downstream (what depends on it) |
+| `get_dependencies` | Traverse dependency graph downstream (what it depends on) or upstream (what depends on it) |
 | `assess_impact` | Compute blast radius of modifying files -- direct and transitive dependents with risk score |
 | `get_clusters` | Get file clusters (groups of tightly connected files with cohesion scores) |
 | `run_review` | Run all 5 mechanical review checks comparing plan against codebase. Produces structured findings (MISMATCH/OMISSION/STALE). |
