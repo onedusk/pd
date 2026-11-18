@@ -245,6 +245,55 @@ func TestBuildGraph(t *testing.T) {
 		assert.Empty(t, out.Impact.DirectlyAffected, "an import does not point at test files")
 	})
 
+	t.Run("second build replaces the first", func(t *testing.T) {
+		repo := t.TempDir()
+		writeFile := func(rel, content string) {
+			path := filepath.Join(repo, rel)
+			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+			require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+		}
+		writeFile("go.mod", "module example.com/demo\n")
+		writeFile("pkg/alpha.go", "package pkg\n\nfunc Alpha() {}\n")
+		writeFile("pkg/beta.go", "package pkg\n\nfunc Beta() {}\n")
+		writeFile("cmd/main.go", "package main\n\nimport \"example.com/demo/pkg\"\n\nfunc main() { pkg.Beta() }\n")
+
+		store := newTestStore(t)
+		parser := graph.NewTreeSitterParser()
+		defer parser.Close()
+		svc := NewCodeIntelService(store, parser)
+		ctx := context.Background()
+		input := BuildGraphInput{RepoPath: repo, Languages: []string{"go"}}
+
+		_, first, err := svc.BuildGraph(ctx, nil, input)
+		require.NoError(t, err)
+		require.Greater(t, first.Stats.EdgeCount, 0)
+		require.Equal(t, 1, first.Stats.ClusterCount)
+
+		_, second, err := svc.BuildGraph(ctx, nil, input)
+		require.NoError(t, err)
+		assert.Equal(t, first.Stats, second.Stats, "same repo, same stats")
+
+		// A file removed between builds leaves the graph with its symbols.
+		require.NoError(t, os.Remove(filepath.Join(repo, "pkg", "alpha.go")))
+		_, third, err := svc.BuildGraph(ctx, nil, input)
+		require.NoError(t, err)
+		assert.Equal(t, first.Stats.FileCount-1, third.Stats.FileCount)
+
+		file, err := store.GetFile(ctx, "pkg/alpha.go")
+		require.NoError(t, err)
+		assert.Nil(t, file, "removed file should be gone")
+		symbols, err := store.QuerySymbols(ctx, "Alpha", 0)
+		require.NoError(t, err)
+		assert.Empty(t, symbols, "symbols of the removed file should be gone")
+
+		// A bad path is rejected before the graph is cleared.
+		_, _, err = svc.BuildGraph(ctx, nil, BuildGraphInput{RepoPath: filepath.Join(repo, "missing")})
+		require.Error(t, err)
+		stats, err := store.Stats(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, third.Stats, *stats)
+	})
+
 	t.Run("empty repoPath returns error", func(t *testing.T) {
 		store := newTestStore(t)
 		parser := graph.NewTreeSitterParser()

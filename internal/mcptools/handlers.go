@@ -76,6 +76,12 @@ func (s *CodeIntelService) BuildGraph(
 		excludeSet[d] = true
 	}
 
+	// Start from an empty graph so a rebuild in the same session does not
+	// add to the previous one or keep files that no longer exist.
+	if r, ok := s.store.(interface{ Reset() }); ok {
+		r.Reset()
+	}
+
 	if err := s.store.InitSchema(ctx); err != nil {
 		return nil, BuildGraphOutput{}, fmt.Errorf("init schema: %w", err)
 	}

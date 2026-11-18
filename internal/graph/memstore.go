@@ -38,6 +38,16 @@ func (m *MemStore) InitSchema(_ context.Context) error {
 	return nil
 }
 
+// Reset removes all files, symbols, edges, and clusters from the store.
+func (m *MemStore) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.files = make(map[string]FileNode)
+	m.symbols = make(map[string]SymbolNode)
+	m.edges = nil
+	m.clusters = nil
+}
+
 // AddFile stores a file node keyed by its path.
 func (m *MemStore) AddFile(_ context.Context, node FileNode) error {
 	m.mu.Lock()
