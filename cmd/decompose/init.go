@@ -133,6 +133,10 @@ func runInit(projectRoot string, force bool) error {
 		fmt.Fprintln(os.Stderr, "  note: the augmentation hook requires 'jq' (not found in PATH)")
 		fmt.Fprintln(os.Stderr, "        install with: brew install jq (macOS) or apt install jq (Linux)")
 	}
+	if _, err := exec.LookPath("timeout"); err != nil {
+		fmt.Fprintln(os.Stderr, "  note: the augmentation hook requires 'timeout' (not found in PATH)")
+		fmt.Fprintln(os.Stderr, "        stock macOS does not ship it; install with: brew install coreutils")
+	}
 
 	// --- Create/merge .mcp.json ---
 
@@ -256,7 +260,7 @@ func findGuardEntry(entries []json.RawMessage) (idx int, sole bool) {
 // PreToolUse list, and --force replaces only that entry.
 func mergeSettings(settingsPath string, force bool) error {
 	hookEntry := json.RawMessage(`{
-      "matcher": "Read|Write|Edit|Glob|Grep|Bash",
+      "matcher": "Read|Write|Edit|Glob|Grep",
       "hooks": [
         {
           "type": "command",
