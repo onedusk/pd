@@ -10,8 +10,8 @@ import (
 )
 
 // symbolLookupLimit is the row limit for the substring query behind an exact
-// symbol lookup. It matches the cap build_graph uses when it persists symbols,
-// so the exact name is not cut off by other names that contain it.
+// symbol lookup. It is high so the exact name is not cut off by other names
+// that contain it.
 const symbolLookupLimit = 100000
 
 // CheckSymbols verifies that symbols referenced in MODIFY task outlines exist

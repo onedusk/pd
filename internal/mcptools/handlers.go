@@ -223,7 +223,8 @@ func persistGraph(ctx context.Context, src graph.Store, persistPath string, file
 		}
 	}
 
-	symbols, err := src.QuerySymbols(ctx, "", 100000)
+	// A limit of zero means no limit, so every symbol is copied.
+	symbols, err := src.QuerySymbols(ctx, "", 0)
 	if err != nil {
 		return fmt.Errorf("query symbols: %w", err)
 	}
@@ -244,20 +245,28 @@ func persistGraph(ctx context.Context, src graph.Store, persistPath string, file
 		}
 	}
 
-	// Copy all edges (IMPORTS, CALLS, DEFINES, INHERITS, IMPLEMENTS, BELONGS_TO).
+	// Copy edges (IMPORTS, DEFINES, INHERITS, IMPLEMENTS, BELONGS_TO). CALLS
+	// edges are left out on purpose: the extractors store them as file path to
+	// callee name, and the Kuzu CALLS table links two Symbol ids, so none of
+	// them would match.
 	edges, err := src.GetAllEdges(ctx)
 	if err != nil {
 		return fmt.Errorf("get edges: %w", err)
 	}
 	skippedEdges := 0
+	skippedCalls := 0
 	for _, e := range edges {
+		if e.Kind == graph.EdgeKindCalls {
+			skippedCalls++
+			continue
+		}
 		if err := dst.AddEdge(ctx, e); err != nil {
 			// Skip edges that reference missing nodes (e.g., filtered files).
 			skippedEdges++
 		}
 	}
-	if skippedClusters > 0 || skippedEdges > 0 {
-		fmt.Fprintf(os.Stderr, "warning: persisted graph omits %d clusters and %d edges that could not be stored\n", skippedClusters, skippedEdges)
+	if skippedClusters > 0 || skippedEdges > 0 || skippedCalls > 0 {
+		fmt.Fprintf(os.Stderr, "warning: persisted graph omits %d clusters and %d edges that could not be stored, and %d CALLS edges that are not persisted\n", skippedClusters, skippedEdges, skippedCalls)
 	}
 
 	return nil

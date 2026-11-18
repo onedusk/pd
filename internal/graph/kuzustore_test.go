@@ -670,6 +670,27 @@ func TestGetDependencies_MemAndKuzuAgree(t *testing.T) {
 	}
 }
 
+// TestQuerySymbols_ZeroLimit_MemAndKuzuReturnAll checks that both stores read
+// a limit of zero as "no limit", which persistGraph relies on to copy every
+// symbol.
+func TestQuerySymbols_ZeroLimit_MemAndKuzuReturnAll(t *testing.T) {
+	ctx := context.Background()
+
+	for name, store := range map[string]Store{"mem": NewMemStore(), "kuzu": newTestStore(t)} {
+		for _, n := range []string{"Alpha", "Beta", "Gamma"} {
+			require.NoError(t, store.AddSymbol(ctx, SymbolNode{Name: n, Kind: SymbolKindFunction, Exported: true, FilePath: "a.go", StartLine: 1, EndLine: 2}), name)
+		}
+
+		all, err := store.QuerySymbols(ctx, "", 0)
+		require.NoError(t, err, name)
+		assert.Len(t, all, 3, name)
+
+		limited, err := store.QuerySymbols(ctx, "", 2)
+		require.NoError(t, err, name)
+		assert.Len(t, limited, 2, name)
+	}
+}
+
 // TestSameNamedSymbols_MemAndKuzuKeepAll checks that both stores keep every
 // symbol when one file defines the same name more than once (methods on
 // different receivers), and that GetSymbol returns the first by start line.

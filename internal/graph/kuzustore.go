@@ -245,17 +245,23 @@ func (s *KuzuStore) GetSymbol(_ context.Context, filePath, name string) (*Symbol
 	return rowToSymbol(rows[0]), nil
 }
 
-// QuerySymbols returns symbols whose name contains the query string.
+// QuerySymbols returns symbols whose name contains the query string, up to
+// limit results. As in MemStore, an empty query matches every symbol and a
+// limit <= 0 returns all matches.
 func (s *KuzuStore) QuerySymbols(_ context.Context, queryStr string, limit int) ([]SymbolNode, error) {
-	rows, err := s.query(
-		`MATCH (s:Symbol) WHERE s.name CONTAINS $q
-		 RETURN s.name, s.kind, s.exported, s.file_path, s.start_line, s.end_line
-		 LIMIT $lim`,
-		map[string]any{
-			"q":   queryStr,
-			"lim": int64(limit),
-		},
-	)
+	cypher := "MATCH (s:Symbol)"
+	params := map[string]any{}
+	if queryStr != "" {
+		// CONTAINS '' matches nothing in KuzuDB, so leave the filter out.
+		cypher += " WHERE s.name CONTAINS $q"
+		params["q"] = queryStr
+	}
+	cypher += " RETURN s.name, s.kind, s.exported, s.file_path, s.start_line, s.end_line"
+	if limit > 0 {
+		cypher += " LIMIT $lim"
+		params["lim"] = int64(limit)
+	}
+	rows, err := s.query(cypher, params)
 	if err != nil {
 		return nil, err
 	}

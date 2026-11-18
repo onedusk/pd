@@ -329,6 +329,69 @@ func TestBuildGraph(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TestPersistGraph
+// ---------------------------------------------------------------------------
+
+// limitRecordingStore records the limit persistGraph passes to QuerySymbols.
+type limitRecordingStore struct {
+	graph.Store
+	limit int
+}
+
+func (s *limitRecordingStore) QuerySymbols(ctx context.Context, query string, limit int) ([]graph.SymbolNode, error) {
+	s.limit = limit
+	return s.Store.QuerySymbols(ctx, query, limit)
+}
+
+func TestPersistGraph(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+	seedSymbols(t, store)
+
+	files := []graph.FileNode{
+		{Path: "pkg/handler.go", Language: graph.LangGo, LOC: 100},
+		{Path: "pkg/service.go", Language: graph.LangGo, LOC: 80},
+		{Path: "pkg/model.go", Language: graph.LangGo, LOC: 50},
+	}
+	edges := []graph.Edge{
+		{SourceID: "pkg/handler.go", TargetID: "pkg/service.go", Kind: graph.EdgeKindImports},
+		// CALLS as the extractors emit it: file path to callee name.
+		{SourceID: "pkg/handler.go", TargetID: "fmt.Sprintf", Kind: graph.EdgeKindCalls},
+		{SourceID: "pkg/service.go", TargetID: "validateUser", Kind: graph.EdgeKindCalls},
+	}
+	for _, e := range edges {
+		require.NoError(t, store.AddEdge(ctx, e))
+	}
+
+	src := &limitRecordingStore{Store: store, limit: -1}
+	persistPath := filepath.Join(t.TempDir(), "graph")
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	origStderr := os.Stderr
+	os.Stderr = w
+	persistErr := persistGraph(ctx, src, persistPath, files)
+	os.Stderr = origStderr
+	require.NoError(t, w.Close())
+	stderr, readErr := io.ReadAll(r)
+	require.NoError(t, readErr)
+	require.NoError(t, persistErr)
+
+	assert.Equal(t, 0, src.limit, "symbols should be read with no limit")
+	assert.Contains(t, string(stderr), "0 clusters and 0 edges that could not be stored")
+	assert.Contains(t, string(stderr), "2 CALLS edges", "skipped CALLS edges should be reported")
+
+	disk, err := graph.NewKuzuFileStore(persistPath)
+	require.NoError(t, err)
+	defer disk.Close()
+	stats, err := disk.Stats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 3, stats.FileCount)
+	assert.Equal(t, 6, stats.SymbolCount, "every symbol should be persisted")
+	assert.Equal(t, 1, stats.EdgeCount, "only the IMPORTS edge is persisted")
+}
+
+// ---------------------------------------------------------------------------
 // TestQuerySymbols
 // ---------------------------------------------------------------------------
 
