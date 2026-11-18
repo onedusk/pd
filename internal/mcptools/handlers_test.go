@@ -206,6 +206,45 @@ func TestBuildGraph(t *testing.T) {
 		assert.Contains(t, string(stderr), "1 skipped")
 	})
 
+	t.Run("go import reaches every file in the package", func(t *testing.T) {
+		repo := t.TempDir()
+		writeFile := func(rel, content string) {
+			path := filepath.Join(repo, rel)
+			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+			require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+		}
+		writeFile("go.mod", "module example.com/demo\n")
+		writeFile("pkg/alpha.go", "package pkg\n\nfunc Alpha() {}\n")
+		writeFile("pkg/beta.go", "package pkg\n\nfunc Beta() {}\n")
+		writeFile("pkg/beta_test.go", "package pkg\n")
+		writeFile("cmd/main.go", "package main\n\nimport \"example.com/demo/pkg\"\n\nfunc main() { pkg.Beta() }\n")
+
+		store := newTestStore(t)
+		parser := graph.NewTreeSitterParser()
+		defer parser.Close()
+		svc := NewCodeIntelService(store, parser)
+		ctx := context.Background()
+
+		_, _, err := svc.BuildGraph(ctx, nil, BuildGraphInput{
+			RepoPath:  repo,
+			Languages: []string{"go"},
+		})
+		require.NoError(t, err)
+
+		// beta.go is not the first file by name in pkg/.
+		_, out, err := svc.AssessImpact(ctx, nil, AssessImpactInput{
+			ChangedFiles: []string{"pkg/beta.go"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"cmd/main.go"}, out.Impact.DirectlyAffected)
+
+		_, out, err = svc.AssessImpact(ctx, nil, AssessImpactInput{
+			ChangedFiles: []string{"pkg/beta_test.go"},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, out.Impact.DirectlyAffected, "an import does not point at test files")
+	})
+
 	t.Run("empty repoPath returns error", func(t *testing.T) {
 		store := newTestStore(t)
 		parser := graph.NewTreeSitterParser()

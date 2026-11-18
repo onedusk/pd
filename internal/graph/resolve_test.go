@@ -207,6 +207,37 @@ func TestResolveGo_LocalModule(t *testing.T) {
 	}
 }
 
+func TestResolveGo_AllPackageFiles(t *testing.T) {
+	r := NewResolver("/tmp/fake", []string{
+		"internal/graph/schema.go",
+		"internal/graph/store.go",
+		"internal/graph/store_test.go",
+		"internal/graph/sub/deep.go",
+		"cmd/main.go",
+	})
+	r.goModPath = "github.com/example/project"
+
+	edges := []Edge{
+		{SourceID: "cmd/main.go", TargetID: "github.com/example/project/internal/graph", Kind: EdgeKindImports},
+		{SourceID: "cmd/main.go", TargetID: "fmt", Kind: EdgeKindImports},
+	}
+	got := r.ResolveAll(edges, LangGo)
+
+	// One edge per non-test file in the imported package folder.
+	want := []Edge{
+		{SourceID: "cmd/main.go", TargetID: "internal/graph/schema.go", Kind: EdgeKindImports},
+		{SourceID: "cmd/main.go", TargetID: "internal/graph/store.go", Kind: EdgeKindImports},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d edges, want %d: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("edge %d = %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
 func TestResolveGo_StdLib(t *testing.T) {
 	r := NewResolver("/tmp/fake", []string{"main.go"})
 	r.goModPath = "github.com/example/project"
