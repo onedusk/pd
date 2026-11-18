@@ -238,12 +238,21 @@ func (s *Scheduler) validate() error {
 // or "### Milestone 1: Foundation".
 var milestoneDefRe = regexp.MustCompile(`(?im)^#+\s+(M(\d+)|Milestone\s+(\d+))\s*[:\-–—]\s*(.+)$`)
 
-// milestoneDependsRe matches dependency arrows like "M1 → M2" or "M1 -> M2, M3".
-var milestoneDependsRe = regexp.MustCompile(`M(\d+)\s*(?:→|->|—>|-->)\s*((?:M\d+)(?:\s*[,+&]\s*M\d+)*)`)
+// milestoneDependsRe matches dependency arrows like "M1 → M2", "M1 -> M2, M3",
+// or "M3 + M4 (parallel) -> M5". Every milestone on the left is a source.
+var milestoneDependsRe = regexp.MustCompile(`((?:M\d+)(?:[ \t]*[,+&][ \t]*M\d+)*)(?:[ \t]*\([^)\n]*\))?[ \t]*(?:→|->|—>|-->)[ \t]*((?:M\d+)(?:[ \t]*[,+&][ \t]*M\d+)*)`)
 
-// milestoneBoxArrowRe matches a box-drawing arrow between two milestones on
-// one line, like "M1 ──► M2" or "M1 ──┬──► M2".
-var milestoneBoxArrowRe = regexp.MustCompile(`M(\d+)[ \t]*[─┬┴┼]+[►▶][ \t]*(M\d+)`)
+// milestoneBoxArrowRe matches a box-drawing arrow between milestones on one
+// line, like "M1 ──► M2", "M1 ──┬──► M2", or "M1 + M2 ──► M3".
+var milestoneBoxArrowRe = regexp.MustCompile(`((?:M\d+)(?:[ \t]*[,+&][ \t]*M\d+)*)(?:[ \t]*\([^)\n]*\))?[ \t]*[─┬┴┼]+[►▶][ \t]*(M\d+)`)
+
+// milestoneLabelRe matches the milestone a line is about, like "M2: Name" or
+// "## Milestone 2: Name".
+var milestoneLabelRe = regexp.MustCompile(`\b(?:M|[Mm]ilestone\s+)(\d+)\s*:`)
+
+// milestoneDependsOnRe matches a "Depends on: M1 (types) + M2" line. The
+// milestones it names are dependencies of the last labelled milestone.
+var milestoneDependsOnRe = regexp.MustCompile(`(?i)\bdepends\s+on\b(.*)$`)
 
 // milestoneTableRowRe matches Progress table rows like
 // "| M1 | Name | [tasks_m01.md](tasks_m01.md) | | 0 |".
@@ -295,9 +304,38 @@ func ParseMilestones(stage3Content string) ([]MilestoneNode, error) {
 		}
 	}
 
-	// Extract dependencies from arrow patterns, one line at a time.
+	// addDep records that targetID depends on sourceID. Targets that are not
+	// defined, and self references, are ignored.
 	hasDeps := false
+	addDep := func(sourceID, targetID string) {
+		target, ok := milestones[targetID]
+		if !ok || sourceID == targetID {
+			return
+		}
+		if !containsString(target.DependsOn, sourceID) {
+			target.DependsOn = append(target.DependsOn, sourceID)
+		}
+		hasDeps = true
+	}
+
+	// Extract dependencies one line at a time: from arrows, and from
+	// "Depends on:" lines under a labelled milestone.
+	current := ""
 	for _, line := range strings.Split(stage3Content, "\n") {
+		label := line
+		dependsOn := milestoneDependsOnRe.FindStringSubmatchIndex(line)
+		if dependsOn != nil {
+			label = line[:dependsOn[0]]
+		}
+		if m := milestoneLabelRe.FindAllStringSubmatch(label, -1); m != nil {
+			current = "M" + m[len(m)-1][1]
+		}
+		if dependsOn != nil && current != "" {
+			for _, ref := range milestoneRefRe.FindAllStringSubmatch(line[dependsOn[2]:dependsOn[3]], -1) {
+				addDep("M"+ref[1], current)
+			}
+		}
+
 		for _, re := range []*regexp.Regexp{milestoneDependsRe, milestoneBoxArrowRe} {
 			rest := line
 			for {
@@ -305,19 +343,12 @@ func ParseMilestones(stage3Content string) ([]MilestoneNode, error) {
 				if loc == nil {
 					break
 				}
-				sourceID := "M" + rest[loc[2]:loc[3]]
-				targetStr := rest[loc[4]:loc[5]]
-
-				// Extract all target milestone references.
-				targetRefs := milestoneRefRe.FindAllStringSubmatch(targetStr, -1)
-				for _, ref := range targetRefs {
-					targetID := "M" + ref[1]
-					if target, ok := milestones[targetID]; ok {
-						// The arrow "M1 → M2" means M2 depends on M1.
-						if !containsString(target.DependsOn, sourceID) {
-							target.DependsOn = append(target.DependsOn, sourceID)
-						}
-						hasDeps = true
+				// The arrow "M1, M2 → M3" means M3 depends on M1 and M2.
+				sourceRefs := milestoneRefRe.FindAllStringSubmatch(rest[loc[2]:loc[3]], -1)
+				targetRefs := milestoneRefRe.FindAllStringSubmatch(rest[loc[4]:loc[5]], -1)
+				for _, src := range sourceRefs {
+					for _, ref := range targetRefs {
+						addDep("M"+src[1], "M"+ref[1])
 					}
 				}
 

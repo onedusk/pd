@@ -313,13 +313,77 @@ func TestParseMilestones_AgentParallelPlan(t *testing.T) {
 	assert.Empty(t, deps["M1"])
 	assert.Equal(t, []string{"M1"}, deps["M2"])
 	assert.Equal(t, []string{"M2"}, deps["M3"])
-	assert.Equal(t, []string{"M3"}, deps["M5"])
+	// M4's edges (M1 to M4, M4 to M5) come from the "Depends on:" lines; the
+	// multi-line branch art that also shows them is not read.
+	assert.Equal(t, []string{"M1"}, deps["M4"])
+	assert.ElementsMatch(t, []string{"M3", "M4"}, deps["M5"])
 	assert.Equal(t, []string{"M5"}, deps["M6"])
 	assert.Equal(t, []string{"M6"}, deps["M7"])
 	assert.Equal(t, []string{"M7"}, deps["M8"])
-	// M4 is left out on purpose: its edges (M1 to M4, M4 to M5) exist only in
-	// the multi-line branch art and the "Depends on:" prose, which the parser
-	// does not read.
+}
+
+// TestParseMilestones_FanIn checks that every milestone on the left of an
+// arrow becomes a dependency, as in "M3, M4 -> M5".
+func TestParseMilestones_FanIn(t *testing.T) {
+	cases := map[string]string{
+		"comma":       "M1 -> M2\nM1 -> M3\nM2, M3 -> M4",
+		"plus":        "M1 -> M2\nM1 -> M3\nM2 + M3 -> M4",
+		"box arrow":   "M1 ──► M2\nM1 ──► M3\nM2 + M3 ──► M4",
+		"parenthesis": "M1 → M2+M3 (parallel) → M4",
+	}
+	for name, arrows := range cases {
+		t.Run(name, func(t *testing.T) {
+			content := "## M1: A\n## M2: B\n## M3: C\n## M4: D\n\n" + arrows + "\n"
+			milestones, err := ParseMilestones(content)
+			require.NoError(t, err)
+			require.Len(t, milestones, 4)
+			assert.Equal(t, []string{"M1"}, milestones[1].DependsOn)
+			assert.Equal(t, []string{"M1"}, milestones[2].DependsOn)
+			assert.ElementsMatch(t, []string{"M2", "M3"}, milestones[3].DependsOn)
+		})
+	}
+}
+
+// TestParseMilestones_ExampleExcerpt uses the dependency lines of
+// examples/stage-3-excerpt.md. Every milestone after M1 must wait on
+// something, or it would be scheduled alongside M1.
+func TestParseMilestones_ExampleExcerpt(t *testing.T) {
+	content := "| M1 | A | tasks_m01.md | 1 | 1 |\n| M2 | B | tasks_m02.md | 1 | 1 |\n| M3 | C | tasks_m03.md | 1 | 1 |\n" +
+		"| M4 | D | tasks_m04.md | 1 | 1 |\n| M5 | E | tasks_m05.md | 1 | 1 |\n| M6 | F | tasks_m06.md | 1 | 1 |\n" +
+		"| M7 | G | tasks_m07.md | 1 | 1 |\n| M8 | H | tasks_m08.md | 1 | 1 |\n| M9 | I | tasks_m09.md | 1 | 1 |\n\n" +
+		"M1 ──► M2 ──┬──► M3 ─────────┐\n" +
+		"             ├──► M4 (parallel with M3) ──┐\n" +
+		"                      M1 + M2 + M4 ──► M8 ──► M9\n\n" +
+		"**Strict sequential path:** M1 → M2 → M3+M4 (parallel) → M5 → M6 → M7 → M8 → M9\n"
+	milestones, err := ParseMilestones(content)
+	require.NoError(t, err)
+	require.Len(t, milestones, 9)
+
+	deps := make(map[string][]string, len(milestones))
+	for _, m := range milestones {
+		deps[m.ID] = m.DependsOn
+	}
+	assert.Empty(t, deps["M1"])
+	assert.Equal(t, []string{"M1"}, deps["M2"])
+	assert.Equal(t, []string{"M2"}, deps["M3"])
+	assert.Equal(t, []string{"M2"}, deps["M4"])
+	assert.ElementsMatch(t, []string{"M3", "M4"}, deps["M5"])
+	assert.Equal(t, []string{"M5"}, deps["M6"])
+	assert.Equal(t, []string{"M6"}, deps["M7"])
+	assert.ElementsMatch(t, []string{"M1", "M2", "M4", "M7"}, deps["M8"])
+	assert.Equal(t, []string{"M8"}, deps["M9"])
+}
+
+// TestParseMilestones_DependsOnLines checks "Depends on:" lines under a
+// milestone, and that such a line before any milestone is ignored.
+func TestParseMilestones_DependsOnLines(t *testing.T) {
+	content := "Depends on: M1\n\n## M1: A\n\n## M2: B\nDepends on: M1 (types)\n\n## M3: C\n- **Depends on:** M1 + M2, M3\n"
+	milestones, err := ParseMilestones(content)
+	require.NoError(t, err)
+	require.Len(t, milestones, 3)
+	assert.Empty(t, milestones[0].DependsOn)
+	assert.Equal(t, []string{"M1"}, milestones[1].DependsOn)
+	assert.Equal(t, []string{"M1", "M2"}, milestones[2].DependsOn)
 }
 
 func TestParseMilestones_ChainOnOneLine(t *testing.T) {
