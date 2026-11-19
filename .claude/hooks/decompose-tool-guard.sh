@@ -2,12 +2,17 @@
 # Hook: augments built-in file tools with graph context from the decompose
 # code intelligence database. Follows the GitNexus augmentation pattern —
 # tools are never blocked, only enriched with additional context.
+#
+# All stderr is silenced to prevent Claude Code from reporting "hook error"
+# on benign warnings from jq, timeout, or KuzuDB.
+
+exec 2>/dev/null
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name')
 
 # Only augment file operation tools
-if [[ ! "$TOOL_NAME" =~ ^(Read|Write|Edit|Glob|Grep|Bash)$ ]]; then
+if [[ ! "$TOOL_NAME" =~ ^(Read|Write|Edit|Glob|Grep)$ ]]; then
   exit 0
 fi
 
@@ -41,11 +46,6 @@ case "$TOOL_NAME" in
     # For Read, extract the filename stem as pattern
     PATTERN=$(echo "$TOOL_INPUT" | jq -r '.file_path // empty' | xargs basename 2>/dev/null | sed 's/\.[^.]*$//')
     ;;
-  Bash)
-    # Extract pattern from grep/rg commands in the bash command
-    CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty')
-    PATTERN=$(echo "$CMD" | grep -oE '(grep|rg)\s+[^|]+' | sed 's/^[^ ]* //' | sed 's/ .*//' | tr -d "\"'" | head -1)
-    ;;
   Write|Edit)
     # For writes to docs/decompose, gently suggest write_stage
     FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // empty')
@@ -69,7 +69,7 @@ if [[ -z "$PATTERN" ]] || [[ ${#PATTERN} -lt 3 ]]; then
 fi
 
 # Query the graph (5s timeout)
-GRAPH_CONTEXT=$(timeout 5 "$DECOMPOSE_BIN" --project-root "$PROJECT_ROOT" augment "$PATTERN" 2>/dev/null)
+GRAPH_CONTEXT=$(timeout 5 "$DECOMPOSE_BIN" --project-root "$PROJECT_ROOT" augment "$PATTERN")
 
 if [[ -z "$GRAPH_CONTEXT" ]]; then
   exit 0  # No graph results, allow tool without augmentation

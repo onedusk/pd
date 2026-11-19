@@ -17,7 +17,7 @@ import (
 )
 
 // DecomposeService handles MCP tool calls for the decompose server mode.
-// It wraps an Orchestrator to execute pipeline stages and query status.
+// No handler reads the pipeline field since run_stage was removed.
 type DecomposeService struct {
 	pipeline  orchestrator.Orchestrator
 	cfg       orchestrator.Config
@@ -39,37 +39,6 @@ func NewDecomposeService(pipeline orchestrator.Orchestrator, cfg orchestrator.Co
 // SetCodeIntel attaches a CodeIntelService so RunReview can use graph-based checks.
 func (s *DecomposeService) SetCodeIntel(ci *CodeIntelService) {
 	s.codeintel = ci
-}
-
-// RunStage executes a single pipeline stage and returns the files written.
-func (s *DecomposeService) RunStage(
-	ctx context.Context,
-	_ *mcp.CallToolRequest,
-	input RunStageInput,
-) (*mcp.CallToolResult, RunStageOutput, error) {
-	if input.Stage < 0 || input.Stage > 4 {
-		return nil, RunStageOutput{
-			Stage:   input.Stage,
-			Status:  "failed",
-			Message: fmt.Sprintf("stage must be 0-4, got %d", input.Stage),
-		}, fmt.Errorf("invalid stage number: %d", input.Stage)
-	}
-
-	stage := orchestrator.Stage(input.Stage)
-	result, err := s.pipeline.RunStage(ctx, stage)
-	if err != nil {
-		return nil, RunStageOutput{
-			Stage:   input.Stage,
-			Status:  "failed",
-			Message: err.Error(),
-		}, nil
-	}
-
-	return nil, RunStageOutput{
-		FilesWritten: result.FilePaths,
-		Stage:        input.Stage,
-		Status:       "completed",
-	}, nil
 }
 
 // GetStatus reports which stages are complete for a named decomposition.
@@ -231,7 +200,7 @@ func (s *DecomposeService) WriteStage(
 // GetStageContext returns the template, section names, and prerequisite content
 // needed to generate a stage. Claude calls this before generating sections.
 func (s *DecomposeService) GetStageContext(
-	_ context.Context,
+	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	input GetStageContextInput,
 ) (*mcp.CallToolResult, GetStageContextOutput, error) {
@@ -289,12 +258,20 @@ func (s *DecomposeService) GetStageContext(
 	inputContent := s.inputContent[name]
 	s.mu.RUnlock()
 
+	// The graph is available only once build_graph has put files in the store.
+	graphAvailable := false
+	if s.codeintel != nil {
+		if stats, err := s.codeintel.store.Stats(ctx); err == nil && stats.FileCount > 0 {
+			graphAvailable = true
+		}
+	}
+
 	return nil, GetStageContextOutput{
 		StageName:      stage.String(),
 		SectionNames:   plan.SectionOrder,
 		Prerequisites:  prerequisites,
 		Template:       string(templateData),
-		GraphAvailable: true,
+		GraphAvailable: graphAvailable,
 		InputContent:   inputContent,
 	}, nil
 }
@@ -349,18 +326,25 @@ func (s *DecomposeService) RunReview(
 
 	outputDir := filepath.Join(s.cfg.ProjectRoot, "docs", "decompose", name)
 
-	// Build GraphProvider from CodeIntelService if available.
+	// Build GraphProvider from CodeIntelService if it has indexed anything.
+	// Before build_graph runs its store is empty and says nothing about the codebase.
 	var gp review.GraphProvider
 	if s.codeintel != nil {
-		gp = review.NewStoreGraphProvider(s.codeintel.store)
-	} else {
-		// Try to open file store.
+		if stats, err := s.codeintel.store.Stats(ctx); err == nil && stats.FileCount > 0 {
+			gp = review.NewStoreGraphProvider(s.codeintel.store)
+		}
+	}
+	if gp == nil {
+		// Try to open file store. A saved graph with no files (a build that
+		// matched nothing) says nothing about the codebase either.
 		graphDir := filepath.Join(s.cfg.ProjectRoot, ".decompose", "graph")
 		if _, err := os.Stat(graphDir); err == nil {
 			store, err := graph.NewKuzuFileStore(graphDir)
 			if err == nil {
 				defer store.Close()
-				gp = review.NewStoreGraphProvider(store)
+				if stats, err := store.Stats(ctx); err == nil && stats.FileCount > 0 {
+					gp = review.NewStoreGraphProvider(store)
+				}
 			}
 		}
 	}
@@ -408,5 +392,6 @@ func (s *DecomposeService) RunReview(
 		Mismatches:    report.MismatchCount(),
 		Checks:        checks,
 		Status:        "completed",
+		Message:       strings.Join(report.Warnings, "\n"),
 	}, nil
 }

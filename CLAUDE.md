@@ -82,9 +82,9 @@ The binary runs as a stdio MCP server. `decompose init` writes this to `.mcp.jso
 - Review checkpoints happen between every stage, not just after Stage 4 -- each stage is reviewed against the codebase before proceeding to the next
 - During implementation: run `/review` after each task, after each milestone, and once across the full scope when all milestones are complete
 
-## Archived: Agent-Parallel Design
+## Agent-Parallel (A2A) Path
 
-`docs/decompose/agent-parallel/stage-1-design-pack.md` contains a Stage 1 design pack for evolving the pipeline into a multi-agent system using A2A protocol. This work is archived -- testing showed the single-agent approach (one Claude session with good instructions and targeted tools) handles the pipeline effectively. The design is preserved as reference material for if/when single-agent decomposition hits scaling limits. See `docs/recommendations.md` for the decision rationale.
+The multi-agent path (`internal/a2a`, `internal/agent`, `internal/orchestrator`) is kept and supported code, not archived. It lets the binary dispatch stage work to A2A agents (`--agents`); the single-agent `/decompose` skill is still the default entry point. Its design, from the Stage 1 design pack through the task specs, is in `docs/decompose/agent-parallel/`.
 
 ## License
 

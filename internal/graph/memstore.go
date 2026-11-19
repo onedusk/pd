@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -13,7 +14,7 @@ var _ Store = (*MemStore)(nil)
 type MemStore struct {
 	mu       sync.RWMutex
 	files    map[string]FileNode
-	symbols  map[string]SymbolNode // key: "filePath:name"
+	symbols  map[string]SymbolNode // key: "filePath:name:startLine"
 	edges    []Edge
 	clusters []ClusterNode
 }
@@ -26,14 +27,25 @@ func NewMemStore() *MemStore {
 	}
 }
 
-// symbolKey builds the composite lookup key for a symbol.
-func symbolKey(filePath, name string) string {
-	return filePath + ":" + name
+// symbolKey builds the composite lookup key for a symbol. The start line
+// keeps same-named symbols in one file (methods on different receivers) apart.
+func symbolKey(filePath, name string, startLine int) string {
+	return filePath + ":" + name + ":" + strconv.Itoa(startLine)
 }
 
 // InitSchema is a no-op for the in-memory store.
 func (m *MemStore) InitSchema(_ context.Context) error {
 	return nil
+}
+
+// Reset removes all files, symbols, edges, and clusters from the store.
+func (m *MemStore) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.files = make(map[string]FileNode)
+	m.symbols = make(map[string]SymbolNode)
+	m.edges = nil
+	m.clusters = nil
 }
 
 // AddFile stores a file node keyed by its path.
@@ -44,11 +56,11 @@ func (m *MemStore) AddFile(_ context.Context, node FileNode) error {
 	return nil
 }
 
-// AddSymbol stores a symbol node keyed by "filePath:name".
+// AddSymbol stores a symbol node keyed by "filePath:name:startLine".
 func (m *MemStore) AddSymbol(_ context.Context, node SymbolNode) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.symbols[symbolKey(node.FilePath, node.Name)] = node
+	m.symbols[symbolKey(node.FilePath, node.Name, node.StartLine)] = node
 	return nil
 }
 
@@ -80,14 +92,20 @@ func (m *MemStore) GetFile(_ context.Context, path string) (*FileNode, error) {
 }
 
 // GetSymbol returns the symbol for the given file path and name, or nil if not found.
+// When the file defines the name more than once, the first by start line is returned.
 func (m *MemStore) GetSymbol(_ context.Context, filePath, name string) (*SymbolNode, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	s, ok := m.symbols[symbolKey(filePath, name)]
-	if !ok {
-		return nil, nil
+	var first *SymbolNode
+	for _, s := range m.symbols {
+		if s.FilePath != filePath || s.Name != name {
+			continue
+		}
+		if first == nil || s.StartLine < first.StartLine {
+			first = &s
+		}
 	}
-	return &s, nil
+	return first, nil
 }
 
 // QuerySymbols returns symbols whose name contains query (case-insensitive),
@@ -108,7 +126,7 @@ func (m *MemStore) QuerySymbols(_ context.Context, query string, limit int) ([]S
 	return results, nil
 }
 
-// GetDependencies performs a BFS on edges from nodeID in the given direction,
+// GetDependencies performs a BFS on IMPORTS edges from nodeID in the given direction,
 // up to maxDepth hops. It returns one DependencyChain per reachable node.
 func (m *MemStore) GetDependencies(_ context.Context, nodeID string, direction Direction, maxDepth int) ([]DependencyChain, error) {
 	m.mu.RLock()
@@ -154,9 +172,13 @@ func (m *MemStore) GetDependencies(_ context.Context, nodeID string, direction D
 }
 
 // neighbors returns IDs reachable from id in one hop along the given direction.
+// Only IMPORTS edges are followed, matching KuzuStore.fileNeighbors.
 func (m *MemStore) neighbors(id string, direction Direction) []string {
 	var result []string
 	for _, e := range m.edges {
+		if e.Kind != EdgeKindImports {
+			continue
+		}
 		switch direction {
 		case DirectionDownstream:
 			// downstream: what id depends on -> follow edges where SourceID matches

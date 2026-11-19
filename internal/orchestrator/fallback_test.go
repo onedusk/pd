@@ -21,8 +21,8 @@ func TestFallback_BasicTemplate_Stage0(t *testing.T) {
 	fb := NewFallbackExecutor(CapBasic)
 	ctx := context.Background()
 
-	// No inputs → Stage 0.
-	result, err := fb.Execute(ctx, cfg, nil)
+	// Stage 0 has no inputs.
+	result, err := fb.Execute(ctx, cfg, StageDevelopmentStandards, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -55,12 +55,12 @@ func TestFallback_BasicTemplate_DesignPack(t *testing.T) {
 	fb := NewFallbackExecutor(CapBasic)
 	ctx := context.Background()
 
-	// Provide Stage 0 input → should produce Stage 1.
+	// Stage 1 with Stage 0 as input.
 	inputs := []StageResult{
 		{Stage: StageDevelopmentStandards, Sections: []Section{{Name: "dev-standards", Content: "test"}}},
 	}
 
-	result, err := fb.Execute(ctx, cfg, inputs)
+	result, err := fb.Execute(ctx, cfg, StageDesignPack, inputs)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -102,7 +102,7 @@ func TestFallback_MCPOnly_DesignPack(t *testing.T) {
 		{Stage: StageDevelopmentStandards, Sections: []Section{{Name: "dev-standards", Content: "test content"}}},
 	}
 
-	result, err := fb.Execute(ctx, cfg, inputs)
+	result, err := fb.Execute(ctx, cfg, StageDesignPack, inputs)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -136,13 +136,13 @@ func TestFallback_MCPOnly_WithContext(t *testing.T) {
 	fb := NewFallbackExecutor(CapMCPOnly)
 	ctx := context.Background()
 
-	// Provide both Stage 0 and Stage 1 → triggers Stage 2.
+	// Stage 2 with Stage 0 and Stage 1 as inputs.
 	inputs := []StageResult{
 		{Stage: StageDevelopmentStandards, Sections: []Section{{Name: "dev-standards", Content: "prior context here"}}},
 		{Stage: StageDesignPack, Sections: []Section{{Name: "design", Content: "design pack content"}}},
 	}
 
-	result, err := fb.Execute(ctx, cfg, inputs)
+	result, err := fb.Execute(ctx, cfg, StageImplementationSkeletons, inputs)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -170,7 +170,7 @@ func TestFallback_UnsupportedLevel(t *testing.T) {
 	fb := NewFallbackExecutor(CapA2AMCP)
 	ctx := context.Background()
 
-	_, err := fb.Execute(ctx, cfg, nil)
+	_, err := fb.Execute(ctx, cfg, StageDevelopmentStandards, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported capability level")
 }
@@ -185,7 +185,7 @@ func TestFallback_OutputFilePath(t *testing.T) {
 	fb := NewFallbackExecutor(CapBasic)
 	ctx := context.Background()
 
-	result, err := fb.Execute(ctx, cfg, nil)
+	result, err := fb.Execute(ctx, cfg, StageDevelopmentStandards, nil)
 	require.NoError(t, err)
 
 	// Check the output file is at the correct path.
@@ -203,4 +203,37 @@ func TestFallback_OutputFilePath(t *testing.T) {
 
 	// Headers should start with #.
 	assert.True(t, strings.HasPrefix(text, "# "))
+}
+
+// TestFallback_ExistingStageFile checks that the fallback executor refuses to
+// replace an existing stage file, and overwrites it only when Force is set.
+func TestFallback_ExistingStageFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := Config{
+		Name:      "test-project",
+		OutputDir: tmpDir,
+	}
+	outPath := filepath.Join(tmpDir, "stage-1-design-pack.md")
+	require.NoError(t, os.WriteFile(outPath, []byte("# Finished design pack"), 0o644))
+
+	fb := NewFallbackExecutor(CapBasic)
+	ctx := context.Background()
+
+	_, err := fb.Execute(ctx, cfg, StageDesignPack, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+	assert.Contains(t, err.Error(), "--force")
+
+	content, err := os.ReadFile(outPath)
+	require.NoError(t, err)
+	assert.Equal(t, "# Finished design pack", string(content))
+
+	cfg.Force = true
+	result, err := fb.Execute(ctx, cfg, StageDesignPack, nil)
+	require.NoError(t, err)
+	assert.Equal(t, StageDesignPack, result.Stage)
+
+	content, err = os.ReadFile(outPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "basic mode")
 }

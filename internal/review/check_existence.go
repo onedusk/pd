@@ -35,7 +35,8 @@ func CheckFileExistence(_ context.Context, cfg ReviewConfig, entries []FileEntry
 					})
 				}
 			case "MODIFY":
-				if !exists {
+				// A file the plan also creates is expected to be missing until then.
+				if !exists && !plansCreate(entry) {
 					counter++
 					findings = append(findings, ReviewFinding{
 						ID:             fmt.Sprintf("R-1.%02d", counter),
@@ -65,4 +66,14 @@ func CheckFileExistence(_ context.Context, cfg ReviewConfig, entries []FileEntry
 	}
 
 	return findings
+}
+
+// plansCreate reports whether any milestone creates the file.
+func plansCreate(entry FileEntry) bool {
+	for _, action := range entry.Actions {
+		if action == "CREATE" {
+			return true
+		}
+	}
+	return false
 }

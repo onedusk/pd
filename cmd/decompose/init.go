@@ -12,11 +12,6 @@ import (
 	"github.com/onedusk/pd/internal/skilldata"
 )
 
-// mcpConfig represents the structure of a .mcp.json file.
-type mcpConfig struct {
-	MCPServers map[string]json.RawMessage `json:"mcpServers"`
-}
-
 // buildMCPEntry creates the MCP server configuration using the absolute path
 // of the currently running binary and the target project root.
 func buildMCPEntry(projectRoot string) json.RawMessage {
@@ -138,6 +133,10 @@ func runInit(projectRoot string, force bool) error {
 		fmt.Fprintln(os.Stderr, "  note: the augmentation hook requires 'jq' (not found in PATH)")
 		fmt.Fprintln(os.Stderr, "        install with: brew install jq (macOS) or apt install jq (Linux)")
 	}
+	if _, err := exec.LookPath("timeout"); err != nil {
+		fmt.Fprintln(os.Stderr, "  note: the augmentation hook requires 'timeout' (not found in PATH)")
+		fmt.Fprintln(os.Stderr, "        stock macOS does not ship it; install with: brew install coreutils")
+	}
 
 	// --- Create/merge .mcp.json ---
 
@@ -170,27 +169,40 @@ func runInit(projectRoot string, force bool) error {
 
 // mergeMCPConfig creates or merges the decompose entry into .mcp.json.
 func mergeMCPConfig(mcpPath, projectRoot string, force bool) error {
-	var cfg mcpConfig
+	// A raw map keeps every top-level key the file already has.
+	var raw map[string]json.RawMessage
 
 	data, err := os.ReadFile(mcpPath)
 	if err == nil {
-		if err := json.Unmarshal(data, &cfg); err != nil {
+		if err := json.Unmarshal(data, &raw); err != nil {
 			return fmt.Errorf("parsing %s: %w", mcpPath, err)
 		}
 	}
-
-	if cfg.MCPServers == nil {
-		cfg.MCPServers = make(map[string]json.RawMessage)
+	if raw == nil {
+		raw = make(map[string]json.RawMessage)
 	}
 
-	if _, exists := cfg.MCPServers["decompose"]; exists && !force {
+	var servers map[string]json.RawMessage
+	if existing, ok := raw["mcpServers"]; ok {
+		if err := json.Unmarshal(existing, &servers); err != nil {
+			return fmt.Errorf("parsing mcpServers in %s: %w", mcpPath, err)
+		}
+	}
+	if servers == nil {
+		servers = make(map[string]json.RawMessage)
+	}
+
+	if _, exists := servers["decompose"]; exists && !force {
 		fmt.Printf("  skipped .mcp.json decompose entry (exists, use --force to overwrite)\n")
 		return nil
 	}
 
-	cfg.MCPServers["decompose"] = buildMCPEntry(projectRoot)
+	servers["decompose"] = buildMCPEntry(projectRoot)
 
-	out, err := json.MarshalIndent(cfg, "", "  ")
+	serversJSON, _ := json.Marshal(servers)
+	raw["mcpServers"] = serversJSON
+
+	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshaling .mcp.json: %w", err)
 	}
@@ -213,11 +225,42 @@ type settingsConfig struct {
 	Rest  map[string]json.RawMessage `json:"-"` // preserve unknown keys
 }
 
+// guardHookCommand is the hook command init installs. A PreToolUse entry that
+// runs it is treated as the decompose entry.
+const guardHookCommand = ".claude/hooks/decompose-tool-guard.sh"
+
+// findGuardEntry returns the index of the first PreToolUse entry that runs the
+// decompose hook, or -1 when there is none. sole reports whether that entry
+// runs nothing else.
+func findGuardEntry(entries []json.RawMessage) (idx int, sole bool) {
+	for i, e := range entries {
+		var entry struct {
+			Hooks []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		}
+		if json.Unmarshal(e, &entry) != nil {
+			continue
+		}
+		ours := 0
+		for _, h := range entry.Hooks {
+			if strings.Contains(h.Command, guardHookCommand) {
+				ours++
+			}
+		}
+		if ours > 0 {
+			return i, ours == len(entry.Hooks)
+		}
+	}
+	return -1, false
+}
+
 // mergeSettings creates or merges the hook configuration into .claude/settings.json.
+// Existing hooks are never dropped: the decompose entry is appended to the
+// PreToolUse list, and --force replaces only that entry.
 func mergeSettings(settingsPath string, force bool) error {
-	hookConfig := json.RawMessage(`[
-    {
-      "matcher": "Read|Write|Edit|Glob|Grep|Bash",
+	hookEntry := json.RawMessage(`{
+      "matcher": "Read|Write|Edit|Glob|Grep",
       "hooks": [
         {
           "type": "command",
@@ -225,8 +268,7 @@ func mergeSettings(settingsPath string, force bool) error {
           "timeout": 8
         }
       ]
-    }
-  ]`)
+    }`)
 
 	// Read existing file.
 	var raw map[string]json.RawMessage
@@ -240,21 +282,42 @@ func mergeSettings(settingsPath string, force bool) error {
 		raw = make(map[string]json.RawMessage)
 	}
 
-	// Check if hooks already exist.
-	if _, exists := raw["hooks"]; exists && !force {
-		fmt.Printf("  skipped %s hooks (exists, use --force to overwrite)\n", dotRelative(filepath.Dir(filepath.Dir(settingsPath)), settingsPath))
-		return nil
-	}
+	display := dotRelative(filepath.Dir(filepath.Dir(settingsPath)), settingsPath)
 
 	// Merge hooks key.
 	var hooks map[string]json.RawMessage
 	if existing, ok := raw["hooks"]; ok {
-		_ = json.Unmarshal(existing, &hooks)
+		if jsonErr := json.Unmarshal(existing, &hooks); jsonErr != nil {
+			return fmt.Errorf("parsing hooks in %s: %w", settingsPath, jsonErr)
+		}
 	}
 	if hooks == nil {
 		hooks = make(map[string]json.RawMessage)
 	}
-	hooks["PreToolUse"] = hookConfig
+
+	var preToolUse []json.RawMessage
+	if existing, ok := hooks["PreToolUse"]; ok {
+		if jsonErr := json.Unmarshal(existing, &preToolUse); jsonErr != nil {
+			return fmt.Errorf("parsing hooks.PreToolUse in %s: %w", settingsPath, jsonErr)
+		}
+	}
+
+	idx, sole := findGuardEntry(preToolUse)
+	switch {
+	case idx < 0:
+		preToolUse = append(preToolUse, hookEntry)
+	case !force:
+		fmt.Printf("  skipped %s hooks (exists, use --force to overwrite)\n", display)
+		return nil
+	case !sole:
+		fmt.Printf("  skipped %s hooks (the decompose entry also runs other hooks, edit it by hand)\n", display)
+		return nil
+	default:
+		preToolUse[idx] = hookEntry
+	}
+
+	preToolUseJSON, _ := json.Marshal(preToolUse)
+	hooks["PreToolUse"] = preToolUseJSON
 
 	hooksJSON, _ := json.Marshal(hooks)
 	raw["hooks"] = hooksJSON
@@ -271,7 +334,11 @@ func mergeSettings(settingsPath string, force bool) error {
 		return fmt.Errorf("writing %s: %w", settingsPath, err)
 	}
 
-	fmt.Printf("  created %s with hook config\n", dotRelative(filepath.Dir(filepath.Dir(settingsPath)), settingsPath))
+	action := "created"
+	if data != nil {
+		action = "updated"
+	}
+	fmt.Printf("  %s %s with hook config\n", action, display)
 	return nil
 }
 

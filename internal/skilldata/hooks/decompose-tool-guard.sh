@@ -12,7 +12,7 @@ INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name')
 
 # Only augment file operation tools
-if [[ ! "$TOOL_NAME" =~ ^(Read|Write|Edit|Glob|Grep|Bash)$ ]]; then
+if [[ ! "$TOOL_NAME" =~ ^(Read|Write|Edit|Glob|Grep)$ ]]; then
   exit 0
 fi
 
@@ -45,11 +45,6 @@ case "$TOOL_NAME" in
   Read)
     # For Read, extract the filename stem as pattern
     PATTERN=$(echo "$TOOL_INPUT" | jq -r '.file_path // empty' | xargs basename 2>/dev/null | sed 's/\.[^.]*$//')
-    ;;
-  Bash)
-    # Extract pattern from grep/rg commands in the bash command
-    CMD=$(echo "$TOOL_INPUT" | jq -r '.command // empty')
-    PATTERN=$(echo "$CMD" | grep -oE '(grep|rg)\s+[^|]+' | sed 's/^[^ ]* //' | sed 's/ .*//' | tr -d "\"'" | head -1)
     ;;
   Write|Edit)
     # For writes to docs/decompose, gently suggest write_stage

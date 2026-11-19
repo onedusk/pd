@@ -256,7 +256,8 @@ The A2A reversal makes three previously "settled" items genuinely open. These ar
 silently implement — they need an explicit call:
 
 1. **Rec 1 — drop the six workflow MCP tools** (`write_stage`, `get_stage_context`, `set_input`,
-   `run_stage`, `get_status`, `list_decompositions`; still registered at `unified_server.go:29-59`).
+   `run_stage`, `get_status`, `list_decompositions`; `run_stage` was removed on 2026-11-18, the other
+   five are still registered in `unified_server.go`).
    The original rationale (Claude prefers native tools; the skill carries the workflow) is
    independent of A2A and still holds — but `run_stage` drives the now-kept orchestrator pipeline,
    so confirm whether these stay or go. This gates drift-5d, onboard-4, cli-drift-1, mcp-1.
@@ -285,10 +286,19 @@ above and can start immediately.
    link + Contents tree), drift-6d / onboard-8 (archive path), drift-7d (dedupe `recommendations.md`).
    **Done 2026-09-19, except drift-7d.** CLAUDE.md now points drift-6d at the tracked
    `docs/decompose/agent-parallel/stage-1-design-pack.md`; also fixed CLAUDE.md's `LICENSE.txt` ref.
-   **drift-7d is blocked on a decision:** the root `docs/recommendations.md` is the *newer* copy
-   (per-stage review checkpoints, matching CLAUDE.md and the skill), so deleting it as planned would
-   lose content. Decide which review policy is current, then keep one copy.
+   **drift-7d done 2026-09-19:** the root copy was the newer one (per-stage review checkpoints,
+   matching CLAUDE.md and the skill); its content now lives at `docs/internal/recommendations.md`
+   and the root copy is removed.
 3. **Fail-loud edge cases** — review-8, review-10, graph-9, status-2, validate-1, impl-1.
+   **Done 2026-09-19** (graph-9 in its own commit; skips reported on stderr only, no MCP schema change). review-8 surfaces as a report warning, not
+   an error. **New finding:** the binary detects Stage 4 by `stage-4-task-specifications.md`, but
+   the skill writes only `tasks_mNN.md`, so `review`/`implement`/`status` treat every
+   skill-produced decomposition as Stage 4-incomplete (reproduced on `docs/decompose/agent-parallel`).
+   **Fixed 2026-09-19:** status accepts either layout. First real `decompose review agent-parallel`
+   run: 27 findings; all 11 Check 1 MISMATCHes are false positives from review-3 (the
+   `github.com/onedusk/pd/` root label is only stripped to `onedusk/pd/`). Remaining gap: the
+   orchestrator pipeline still writes the single `stage-4-task-specifications.md`, which review's
+   `tasks_m*.md` parser cannot read.
 4. **review-5** (deterministic findings), **status-1** (status markers), **build-1** (cgo tags).
 
 ### Phase 2 — Correctness & coverage of the kept core (M–L)

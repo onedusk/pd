@@ -56,7 +56,9 @@ func NewResolver(repoRoot string, knownFiles []string) *Resolver {
 
 // ResolveEdge attempts to resolve a single IMPORTS edge's TargetID from a raw
 // import specifier to a repo-relative file path. Returns the resolved edge and
-// true on success. Non-IMPORTS edges pass through unchanged.
+// true on success. Non-IMPORTS edges pass through unchanged. A Go import names
+// a package, so for Go this returns only the first file of that package;
+// ResolveAll returns one edge per file.
 func (r *Resolver) ResolveEdge(edge Edge, lang Language) (Edge, bool) {
 	if edge.Kind != EdgeKindImports {
 		return edge, true
@@ -69,7 +71,9 @@ func (r *Resolver) ResolveEdge(edge Edge, lang Language) (Edge, bool) {
 	case LangTypeScript:
 		resolved, ok = r.resolveTS(edge.TargetID, edge.SourceID)
 	case LangGo:
-		resolved, ok = r.resolveGo(edge.TargetID)
+		if files := r.resolveGo(edge.TargetID); len(files) > 0 {
+			resolved, ok = files[0], true
+		}
 	case LangPython:
 		resolved, ok = r.resolvePython(edge.TargetID, edge.SourceID)
 	case LangRust:
@@ -87,10 +91,18 @@ func (r *Resolver) ResolveEdge(edge Edge, lang Language) (Edge, bool) {
 }
 
 // ResolveAll resolves a slice of edges, dropping unresolvable IMPORTS edges.
-// Non-IMPORTS edges pass through unchanged.
+// Non-IMPORTS edges pass through unchanged. A Go IMPORTS edge becomes one edge
+// per non-test file in the imported package.
 func (r *Resolver) ResolveAll(edges []Edge, lang Language) []Edge {
 	out := make([]Edge, 0, len(edges))
 	for _, e := range edges {
+		if lang == LangGo && e.Kind == EdgeKindImports {
+			for _, f := range r.resolveGo(e.TargetID) {
+				e.TargetID = f
+				out = append(out, e)
+			}
+			continue
+		}
 		resolved, ok := r.ResolveEdge(e, lang)
 		if ok {
 			out = append(out, resolved)
@@ -207,34 +219,29 @@ func matchWildcard(pattern, subpath string) (bool, string) {
 
 // --- Go resolution ---
 
-func (r *Resolver) resolveGo(importPath string) (string, bool) {
+// resolveGo returns the non-test .go files of the imported package, sorted by
+// path. It returns nil for stdlib and external imports.
+func (r *Resolver) resolveGo(importPath string) []string {
 	if r.goModPath == "" {
-		return "", false
+		return nil
 	}
 	if !strings.HasPrefix(importPath, r.goModPath) {
-		return "", false // stdlib or external module
+		return nil // stdlib or external module
 	}
 
 	// Strip module path to get repo-relative directory.
 	relDir := strings.TrimPrefix(importPath, r.goModPath)
 	relDir = strings.TrimPrefix(relDir, "/")
 
-	// Find the first .go file in that directory.
-	files := r.dirIndex[relDir]
-	if len(files) == 0 {
-		return "", false
-	}
-
-	// Sort for determinism, pick first .go file.
-	sorted := make([]string, len(files))
-	copy(sorted, files)
-	sort.Strings(sorted)
-	for _, f := range sorted {
+	// Collect the non-test .go files in that directory, sorted for determinism.
+	var out []string
+	for _, f := range r.dirIndex[relDir] {
 		if strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, "_test.go") {
-			return f, true
+			out = append(out, f)
 		}
 	}
-	return "", false
+	sort.Strings(out)
+	return out
 }
 
 // --- Python resolution ---

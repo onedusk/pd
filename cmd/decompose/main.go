@@ -59,8 +59,8 @@ func run(args []string) error {
 	fs.StringVar(&flags.InputFile, "input", "", "path to a high-level input file (idea, spec, or plan) to seed Stage 1")
 	fs.BoolVar(&flags.SkipVerification, "skip-verification", false, "skip post-stage verification")
 	fs.StringVar(&flags.ReviewMode, "review-mode", "cli", "review strategy for implement command: cli, pr, file")
-	fs.IntVar(&flags.MaxConcurrent, "max-concurrent", 3, "max parallel Claude Code sessions for implement command")
-	fs.BoolVar(&flags.Force, "force", false, "overwrite existing files during init")
+	fs.IntVar(&flags.MaxConcurrent, "max-concurrent", 1, "max parallel Claude Code sessions for implement command; sessions share one working tree and cli and file review modes do not commit between milestones, so a review lists every change so far; values above 1 also run milestones in that tree at once")
+	fs.BoolVar(&flags.Force, "force", false, "overwrite existing files (init, stage output)")
 	fs.BoolVar(&flags.SkipReview, "skip-review", false, "suppress review warnings when implementing")
 	fs.BoolVar(&flags.Version, "version", false, "print version and exit")
 
@@ -229,6 +229,7 @@ func run(args []string) error {
 		SingleAgent:      flags.SingleAgent,
 		SkipVerification: flags.SkipVerification,
 		Verbose:          flags.Verbose,
+		Force:            flags.Force,
 	}
 
 	// Create pipeline.
@@ -291,6 +292,9 @@ func runImplement(ctx context.Context, projectRoot, name string, flags cliFlags)
 	// Verify decomposition is complete.
 	ds := status.GetDecompositionStatus(projectRoot, name)
 	for _, s := range ds.Stages {
+		if s.Stage == 0 {
+			continue // Stage 0 is optional; the implementer skips it when absent.
+		}
 		if !s.Complete {
 			return fmt.Errorf("stage %d (%s) is not complete; run full decomposition before implementing", s.Stage, s.Name)
 		}
@@ -326,7 +330,7 @@ func runImplement(ctx context.Context, projectRoot, name string, flags cliFlags)
 	var review orchestrator.ReviewStrategy
 	switch flags.ReviewMode {
 	case "pr":
-		review = orchestrator.NewPRReviewStrategy("main", "origin")
+		review = orchestrator.NewPRReviewStrategy(projectRoot, "main", "origin")
 	case "file":
 		review = orchestrator.NewFileReviewStrategy(filepath.Join(outputDir, "reviews"))
 	default:

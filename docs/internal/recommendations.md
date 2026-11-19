@@ -80,6 +80,8 @@ The upcoming dusk test (2,266 files, 22,487 edges) is the real proving ground. A
 
 ## Recommendation 3: Freeze Multi-Agent Development
 
+> **Superseded 2026-06-18.** The repo owner decided to keep the A2A multi-agent path (`internal/a2a`, `internal/agent`, `internal/orchestrator`) as supported code. The actions below are withdrawn. The text is kept as the record of the 2026-03-13 reasoning.
+
 The A2A agent pipeline is interesting engineering that solves a problem not yet demonstrated to exist.
 
 The agent-parallel decomposition planned 73 tasks across 8 milestones. Zero have been completed. The code that exists was written speculatively, ahead of the decomposition's own task specs.
@@ -148,9 +150,9 @@ After implementing Recommendations 1 and 3, the binary should contain exactly:
 | `internal/skilldata/` | Embedded skill files for `decompose init` | 20 |
 | `cmd/decompose/` | CLI entry, init, status, review, export, diagram, augment | 500 |
 
-**Total: ~8,500 lines across 7 internal packages.** Down from ~24,000 lines across 13 packages.
+**Total: ~8,500 lines across 7 internal packages.** Down from ~24,000 lines across 13 packages. (Superseded 2026-06-18: this total assumes the three A2A packages are shelved; they are kept, see Recommendation 3.)
 
-What gets shelved: `internal/a2a/` (3,100), `internal/agent/` (4,300), `internal/orchestrator/` (5,500). What gets removed: workflow tool handlers in `internal/mcptools/decompose_handlers.go`, decompose-specific MCP server registrations for workflow tools.
+What gets shelved (superseded 2026-06-18: these packages are kept, see Recommendation 3): `internal/a2a/` (3,100), `internal/agent/` (4,300), `internal/orchestrator/` (5,500). What gets removed: workflow tool handlers in `internal/mcptools/decompose_handlers.go`, decompose-specific MCP server registrations for workflow tools.
 
 ### CGO Consideration
 
@@ -178,12 +180,12 @@ This is the lowest-risk, highest-immediate-impact action and should happen first
    - Stage 4: "Before writing file actions, verify that files listed as MODIFY exist with the signatures assumed."
 5. Keep the Review Phase section -- it correctly documents `run_review` usage.
 6. Remove `set_input`, `get_stage_context`, `write_stage`, `get_status`, `run_stage` from the Available Tools table.
-7. Add explicit /review invocation points: "After Stage 4 completes, recommend running /review to validate the plan against the codebase before implementation. After each task implementation, run /review on the changed files. After all milestones complete, run /review on the full scope of changes."
+7. Add review checkpoints at every stage boundary, not just post-Stage 4. Between each stage: lightweight self-review ("read what was just written, check it against what exists, flag problems before the next stage builds on bad assumptions"). After Stage 4 completes: full codebase validation comparing task specs against the live dependency graph. During implementation: /review (Claude Code native) after each task and after all milestones. The per-stage reviews are the key differentiator from the earlier flow -- they prevent assumption drift from compounding across stages.
 
 ### CLAUDE.md
 
 1. Update the opening paragraph. "There is no build system, no test suite, and no application code to run" is no longer accurate. The repo has a Makefile, Go tests, and a Go binary.
-2. Remove or archive the "Internal Design (Agent-Parallel Evolution)" section. Replace with a brief note that agent-parallel design docs exist in `experimental/` or `docs/archive/` as exploratory work.
+2. Remove or archive the "Internal Design (Agent-Parallel Evolution)" section. Replace with a brief note that agent-parallel design docs exist in `experimental/` or `docs/archive/` as exploratory work. (Superseded 2026-06-18: CLAUDE.md now describes the A2A path as kept, see Recommendation 3.)
 3. Add a section on the Go binary: what it provides (code intelligence, review checks, project initialization), how to build it, how to run it as MCP server.
 
 ---
@@ -192,7 +194,7 @@ This is the lowest-risk, highest-immediate-impact action and should happen first
 
 1. **Memstore threshold.** Is the in-memory graph store sufficient for projects under N files? If so, the binary could ship without KuzuDB for small projects. N needs testing.
 
-2. **Review automation.** Should /review run automatically after Stage 4 completion, or remain manually invoked? Automatic invocation ensures it is never skipped but adds latency. Claude Code's native /review command handles the execution; the question is whether the SKILL.md should instruct Claude to invoke it automatically or recommend it and let the user decide.
+2. **Review granularity and automation.** Testing revealed that per-stage review checkpoints during decomposition (not just post-Stage 4) catch real issues: type collisions at Stage 2, milestone ordering contradictions at Stage 3, stale MODIFY targets at Stage 4. The SKILL.md should instruct lightweight self-review between stages as standard practice, with full /review (Claude Code native) reserved for implementation validation. The deeper question is whether self-review is sufficient or whether delegated review via A2A (another Claude session, Gemini, Codex) would catch issues the authoring session misses. Current evidence: self-review already catches substantive bugs (Decimal serialization, non-atomic Redis, double-serialization). The signal to invest in A2A-delegated review would be a demonstrated class of issues that self-review consistently misses. No such class has appeared yet.
 
 3. **Distribution model.** If the project goes external, the reduced binary (Recommendation 5) makes the skill-binary split cleaner: plugin carries skill + templates, binary carries code intelligence. The plugin format for local binary MCP servers remains untested. See docs/internal/plugin-packaging-decision.md.
 
@@ -210,9 +212,9 @@ This is the lowest-risk, highest-immediate-impact action and should happen first
 |---|---------------|----------|-----------|
 | 1 | Workflow architecture | Path B+C hybrid (skill-driven, scoped advisory hook) | 9/10 quality without workflow tools; stop fighting the model |
 | 2 | Code intelligence scope | Keep all tools, anchor to Stage 1 + /review, question-driven at 2-4 | Proven at two touchpoints; don't force elsewhere but don't lock out |
-| 3 | Multi-agent development | Freeze, shelve to experimental with archival note | 13K lines of unproven coordination infrastructure |
+| 3 | Multi-agent development | Freeze, shelve to experimental with archival note. **Superseded 2026-06-18: A2A is kept** | 13K lines of unproven coordination infrastructure |
 | 4 | Evaluation | Run pairwise comparison on 3 projects (including dusk at scale) | Need n>1 evidence; dusk test is brownfield/large condition |
-| 5 | Binary scope | Reduce to graph + review + CLI (~8.5K lines) | Cut 65% of code surface, keep what works |
+| 5 | Binary scope | Reduce to graph + review + CLI (~8.5K lines). **Superseded 2026-06-18 where it depends on shelving A2A** | Cut 65% of code surface, keep what works |
 | 6 | Skill/CLAUDE.md | Remove MCP-first steering, add question-driven prompts, add /review points | Align documentation with proven behavior |
 
 ---
@@ -221,9 +223,9 @@ This is the lowest-risk, highest-immediate-impact action and should happen first
 
 1. **SKILL.md and CLAUDE.md updates** (Rec 6) -- lowest risk, highest immediate impact. Aligns steering with proven behavior. Add question-driven prompts and /review invocation points.
 2. **Remove workflow MCP tools** (Rec 1) -- delete tool registrations and handlers. The SKILL.md update makes native tools primary. Scope the advisory hook for /review findings.
-3. **Shelve multi-agent code** (Rec 3) -- move A2A, agent, orchestrator to experimental branch. Write archival note documenting why and what signal justifies revival. Mechanical refactor.
+3. **Shelve multi-agent code** (Rec 3) -- move A2A, agent, orchestrator to experimental branch. Write archival note documenting why and what signal justifies revival. Mechanical refactor. **Superseded 2026-06-18: A2A is kept, skip this step.**
 4. **Run dusk evaluation** (Rec 4, partial) -- decompose against 2,266-file codebase with code intelligence active. This is the brownfield/large test. Observe whether question-driven prompts produce natural tool usage at Stages 2-4.
 5. **Complete evaluation** (Rec 4, remaining) -- run greenfield and brownfield/small tests. Compare Condition A vs B. Generate decision data.
-6. **Binary reduction** (Rec 5) -- simplify MCP server registration and CLI subcommands after shelved code is separated.
+6. **Binary reduction** (Rec 5) -- simplify MCP server registration and CLI subcommands after shelved code is separated. (Step 3 is superseded, so no code is shelved first.)
 
 Steps 1-3 can be done in a single focused session. Step 4 happens naturally as the next real project. Steps 5-6 follow from accumulated evidence.

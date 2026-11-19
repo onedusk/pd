@@ -63,6 +63,7 @@ type ReviewReport struct {
 	Checks        []CheckSummary  `json:"checks"`
 	Findings      []ReviewFinding `json:"findings"`
 	HasMismatches bool            `json:"hasMismatches"`
+	Warnings      []string        `json:"warnings,omitempty"`
 }
 
 // FileEntry represents one file from the Stage 3 directory tree.
@@ -151,7 +152,7 @@ func RunReview(ctx context.Context, cfg ReviewConfig) (*ReviewReport, error) {
 	}
 
 	// Parse Stage 4 task specs.
-	tasks, err := loadStage4(cfg)
+	tasks, warnings, err := loadStage4(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("parse stage 4: %w", err)
 	}
@@ -209,6 +210,7 @@ func RunReview(ctx context.Context, cfg ReviewConfig) (*ReviewReport, error) {
 		Checks:        checks,
 		Findings:      allFindings,
 		HasMismatches: hasMismatches,
+		Warnings:      warnings,
 	}, nil
 }
 
@@ -218,6 +220,6 @@ func loadStage3(cfg ReviewConfig) ([]FileEntry, string, error) {
 }
 
 // loadStage4 reads and parses all Stage 4 task spec files.
-func loadStage4(cfg ReviewConfig) ([]TaskEntry, error) {
+func loadStage4(cfg ReviewConfig) ([]TaskEntry, []string, error) {
 	return LoadAndParseStage4(cfg.DecompDir)
 }

@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -185,15 +186,6 @@ func (s *Scheduler) validate() error {
 
 	// Cycle detection using Kahn's algorithm.
 	inDegree := make(map[string]int, len(s.milestones))
-	for _, m := range s.milestones {
-		if _, ok := inDegree[m.ID]; !ok {
-			inDegree[m.ID] = 0
-		}
-		for _, depID := range m.DependsOn {
-			inDegree[m.ID]++
-			_ = depID // counted above
-		}
-	}
 
 	// Recompute in-degree properly: for each edge dep -> m, increment m's in-degree.
 	for id := range s.milestones {
@@ -246,33 +238,63 @@ func (s *Scheduler) validate() error {
 // or "### Milestone 1: Foundation".
 var milestoneDefRe = regexp.MustCompile(`(?im)^#+\s+(M(\d+)|Milestone\s+(\d+))\s*[:\-–—]\s*(.+)$`)
 
-// milestoneDependsRe matches dependency arrows like "M1 → M2" or "M1 -> M2, M3".
-var milestoneDependsRe = regexp.MustCompile(`M(\d+)\s*(?:→|->|—>|-->)\s*((?:M\d+)(?:\s*[,+&]\s*M\d+)*)`)
+// milestoneDependsRe matches dependency arrows like "M1 → M2", "M1 -> M2, M3",
+// or "M3 + M4 (parallel) -> M5". Every milestone on the left is a source.
+var milestoneDependsRe = regexp.MustCompile(`((?:M\d+)(?:[ \t]*[,+&][ \t]*M\d+)*)(?:[ \t]*\([^)\n]*\))?[ \t]*(?:→|->|—>|-->)[ \t]*((?:M\d+)(?:[ \t]*[,+&][ \t]*M\d+)*)`)
+
+// milestoneBoxArrowRe matches a box-drawing arrow between milestones on one
+// line, like "M1 ──► M2", "M1 ──┬──► M2", or "M1 + M2 ──► M3".
+var milestoneBoxArrowRe = regexp.MustCompile(`((?:M\d+)(?:[ \t]*[,+&][ \t]*M\d+)*)(?:[ \t]*\([^)\n]*\))?[ \t]*[─┬┴┼]+[►▶][ \t]*(M\d+)`)
+
+// milestoneLabelRe matches the milestone a line is about, like "M2: Name" or
+// "## Milestone 2: Name".
+var milestoneLabelRe = regexp.MustCompile(`\b(?:M|[Mm]ilestone\s+)(\d+)\s*:`)
+
+// milestoneDependsOnRe matches a "Depends on: M1 (types) + M2" line. The
+// milestones it names are dependencies of the last labelled milestone. The
+// colon is required, so prose like "M4 depends on M3" is not read.
+var milestoneDependsOnRe = regexp.MustCompile(`(?i)\bdepends\s+on\s*:(.*)$`)
+
+// milestoneTableRowRe matches Progress table rows like
+// "| M1 | Name | [tasks_m01.md](tasks_m01.md) | | 0 |".
+var milestoneTableRowRe = regexp.MustCompile(`(?m)^[ \t]*\|[ \t]*M(\d+)[ \t]*\|[ \t]*([^|\n]+?)[ \t]*\|`)
 
 // milestoneRefRe extracts individual milestone references like "M1", "M2".
 var milestoneRefRe = regexp.MustCompile(`M(\d+)`)
 
+// ErrNoMilestoneDependencies is returned by ParseMilestones when a plan has
+// two or more milestones and no dependency arrow between any of them.
+var ErrNoMilestoneDependencies = errors.New(`no milestone dependencies found in Stage 3 content: add arrows such as "M1 -> M2" or mermaid lines such as "M1 --> M2"`)
+
 // ParseMilestones extracts milestone IDs, names, and dependency relationships
-// from Stage 3 markdown content.
+// from Stage 3 markdown content. Milestones come from headings, or from the
+// Progress table rows when there are no headings. When it returns
+// ErrNoMilestoneDependencies, the milestones are returned as well.
 func ParseMilestones(stage3Content string) ([]MilestoneNode, error) {
-	// Extract milestone definitions.
-	defMatches := milestoneDefRe.FindAllStringSubmatch(stage3Content, -1)
-	if len(defMatches) == 0 {
+	// Extract milestone definitions as (number, name) pairs.
+	var defs [][2]string
+	for _, match := range milestoneDefRe.FindAllStringSubmatch(stage3Content, -1) {
+		num := match[2]
+		if num == "" {
+			num = match[3]
+		}
+		defs = append(defs, [2]string{num, match[4]})
+	}
+	if len(defs) == 0 {
+		for _, match := range milestoneTableRowRe.FindAllStringSubmatch(stage3Content, -1) {
+			defs = append(defs, [2]string{match[1], match[2]})
+		}
+	}
+	if len(defs) == 0 {
 		return nil, fmt.Errorf("no milestone definitions found in Stage 3 content")
 	}
 
 	milestones := make(map[string]*MilestoneNode)
 	var order []string
 
-	for _, match := range defMatches {
-		var num string
-		if match[2] != "" {
-			num = match[2]
-		} else {
-			num = match[3]
-		}
-		id := "M" + num
-		name := strings.TrimSpace(match[4])
+	for _, def := range defs {
+		id := "M" + def[0]
+		name := strings.TrimSpace(def[1])
 
 		if _, exists := milestones[id]; !exists {
 			milestones[id] = &MilestoneNode{
@@ -283,22 +305,57 @@ func ParseMilestones(stage3Content string) ([]MilestoneNode, error) {
 		}
 	}
 
-	// Extract dependencies from arrow patterns.
-	depMatches := milestoneDependsRe.FindAllStringSubmatch(stage3Content, -1)
-	for _, match := range depMatches {
-		sourceNum := match[1]
-		sourceID := "M" + sourceNum
-		targetStr := match[2]
+	// addDep records that targetID depends on sourceID. Targets that are not
+	// defined, and self references, are ignored.
+	hasDeps := false
+	addDep := func(sourceID, targetID string) {
+		target, ok := milestones[targetID]
+		if !ok || sourceID == targetID {
+			return
+		}
+		if !containsString(target.DependsOn, sourceID) {
+			target.DependsOn = append(target.DependsOn, sourceID)
+		}
+		hasDeps = true
+	}
 
-		// Extract all target milestone references.
-		targetRefs := milestoneRefRe.FindAllStringSubmatch(targetStr, -1)
-		for _, ref := range targetRefs {
-			targetID := "M" + ref[1]
-			if target, ok := milestones[targetID]; ok {
-				// The arrow "M1 → M2" means M2 depends on M1.
-				if !containsString(target.DependsOn, sourceID) {
-					target.DependsOn = append(target.DependsOn, sourceID)
+	// Extract dependencies one line at a time: from arrows, and from
+	// "Depends on:" lines under a labelled milestone.
+	current := ""
+	for _, line := range strings.Split(stage3Content, "\n") {
+		label := line
+		dependsOn := milestoneDependsOnRe.FindStringSubmatchIndex(line)
+		if dependsOn != nil {
+			label = line[:dependsOn[0]]
+		}
+		if m := milestoneLabelRe.FindAllStringSubmatch(label, -1); m != nil {
+			current = "M" + m[len(m)-1][1]
+		}
+		if dependsOn != nil && current != "" {
+			for _, ref := range milestoneRefRe.FindAllStringSubmatch(line[dependsOn[2]:dependsOn[3]], -1) {
+				addDep("M"+ref[1], current)
+			}
+		}
+
+		for _, re := range []*regexp.Regexp{milestoneDependsRe, milestoneBoxArrowRe} {
+			rest := line
+			for {
+				loc := re.FindStringSubmatchIndex(rest)
+				if loc == nil {
+					break
 				}
+				// The arrow "M1, M2 → M3" means M3 depends on M1 and M2.
+				sourceRefs := milestoneRefRe.FindAllStringSubmatch(rest[loc[2]:loc[3]], -1)
+				targetRefs := milestoneRefRe.FindAllStringSubmatch(rest[loc[4]:loc[5]], -1)
+				for _, src := range sourceRefs {
+					for _, ref := range targetRefs {
+						addDep("M"+src[1], "M"+ref[1])
+					}
+				}
+
+				// Resume at the target so that it can be the source of the
+				// next link in a chain like "M1 -> M2 -> M3".
+				rest = rest[loc[4]:]
 			}
 		}
 	}
@@ -307,6 +364,9 @@ func ParseMilestones(stage3Content string) ([]MilestoneNode, error) {
 	var result []MilestoneNode
 	for _, id := range order {
 		result = append(result, *milestones[id])
+	}
+	if len(result) > 1 && !hasDeps {
+		return result, ErrNoMilestoneDependencies
 	}
 	return result, nil
 }

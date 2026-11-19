@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	kuzu "github.com/kuzudb/go-kuzu"
 )
@@ -143,7 +144,7 @@ func (s *KuzuStore) AddSymbol(_ context.Context, node SymbolNode) error {
 			end_line: $el
 		})`,
 		map[string]any{
-			"id":       symbolID(node.FilePath, node.Name),
+			"id":       symbolID(node.FilePath, node.Name, node.StartLine),
 			"name":     node.Name,
 			"kind":     string(node.Kind),
 			"exported": node.Exported,
@@ -227,11 +228,13 @@ func (s *KuzuStore) GetFile(_ context.Context, path string) (*FileNode, error) {
 }
 
 // GetSymbol retrieves a single Symbol node by file path and name, or nil if not found.
+// When the file defines the name more than once, the first by start line is returned.
 func (s *KuzuStore) GetSymbol(_ context.Context, filePath, name string) (*SymbolNode, error) {
 	rows, err := s.query(
-		`MATCH (s:Symbol {id: $id})
-		 RETURN s.name, s.kind, s.exported, s.file_path, s.start_line, s.end_line`,
-		map[string]any{"id": symbolID(filePath, name)},
+		`MATCH (s:Symbol) WHERE s.file_path = $fp AND s.name = $name
+		 RETURN s.name, s.kind, s.exported, s.file_path, s.start_line, s.end_line
+		 ORDER BY s.start_line LIMIT 1`,
+		map[string]any{"fp": filePath, "name": name},
 	)
 	if err != nil {
 		return nil, err
@@ -242,17 +245,23 @@ func (s *KuzuStore) GetSymbol(_ context.Context, filePath, name string) (*Symbol
 	return rowToSymbol(rows[0]), nil
 }
 
-// QuerySymbols returns symbols whose name contains the query string.
+// QuerySymbols returns symbols whose name contains the query string, up to
+// limit results. As in MemStore, an empty query matches every symbol and a
+// limit <= 0 returns all matches.
 func (s *KuzuStore) QuerySymbols(_ context.Context, queryStr string, limit int) ([]SymbolNode, error) {
-	rows, err := s.query(
-		`MATCH (s:Symbol) WHERE s.name CONTAINS $q
-		 RETURN s.name, s.kind, s.exported, s.file_path, s.start_line, s.end_line
-		 LIMIT $lim`,
-		map[string]any{
-			"q":   queryStr,
-			"lim": int64(limit),
-		},
-	)
+	cypher := "MATCH (s:Symbol)"
+	params := map[string]any{}
+	if queryStr != "" {
+		// CONTAINS '' matches nothing in KuzuDB, so leave the filter out.
+		cypher += " WHERE s.name CONTAINS $q"
+		params["q"] = queryStr
+	}
+	cypher += " RETURN s.name, s.kind, s.exported, s.file_path, s.start_line, s.end_line"
+	if limit > 0 {
+		cypher += " LIMIT $lim"
+		params["lim"] = int64(limit)
+	}
+	rows, err := s.query(cypher, params)
 	if err != nil {
 		return nil, err
 	}
@@ -572,9 +581,11 @@ func (s *KuzuStore) countEdges() (int, error) {
 	return total, nil
 }
 
-// symbolID produces a deterministic identifier for a symbol: "filePath:name".
-func symbolID(filePath, name string) string {
-	return filePath + ":" + name
+// symbolID produces a deterministic identifier for a symbol:
+// "filePath:name:startLine". It matches MemStore's symbolKey, so same-named
+// symbols in one file (methods on different receivers) stay separate nodes.
+func symbolID(filePath, name string, startLine int) string {
+	return filePath + ":" + name + ":" + strconv.Itoa(startLine)
 }
 
 // rowToSymbol converts a 6-column result row into a SymbolNode.

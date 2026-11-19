@@ -38,9 +38,14 @@ func runReview(_ context.Context, projectRoot, name string, flags cliFlags) erro
 		store, err := graph.NewKuzuFileStore(graphDir)
 		if err == nil {
 			defer store.Close()
-			gp = review.NewStoreGraphProvider(store)
-			if flags.Verbose {
-				fmt.Fprintln(os.Stderr, "Graph store opened for review checks")
+			// A saved graph with no files says nothing about the codebase.
+			if stats, err := store.Stats(context.Background()); err == nil && stats.FileCount > 0 {
+				gp = review.NewStoreGraphProvider(store)
+				if flags.Verbose {
+					fmt.Fprintln(os.Stderr, "Graph store opened for review checks")
+				}
+			} else if flags.Verbose {
+				fmt.Fprintln(os.Stderr, "warning: graph store has no files; run build_graph to index the project")
 			}
 		} else if flags.Verbose {
 			fmt.Fprintf(os.Stderr, "warning: could not open graph store: %v\n", err)
@@ -48,7 +53,7 @@ func runReview(_ context.Context, projectRoot, name string, flags cliFlags) erro
 	}
 
 	// Get git commit hash.
-	commitHash := getCommitHash()
+	commitHash := getCommitHash(projectRoot)
 
 	cfg := review.ReviewConfig{
 		ProjectRoot: projectRoot,
@@ -72,6 +77,9 @@ func runReview(_ context.Context, projectRoot, name string, flags cliFlags) erro
 	}
 
 	// Print summary to stderr.
+	for _, w := range report.Warnings {
+		fmt.Fprintf(os.Stderr, "WARNING: %s\n", w)
+	}
 	total := len(report.Findings)
 	mismatches := report.MismatchCount()
 	fmt.Fprintf(os.Stderr, "Review complete: %d findings", total)
@@ -202,9 +210,12 @@ func checkReviewBeforeImplement(projectRoot, name string, skipReview bool) {
 	}
 }
 
-// getCommitHash returns the current git HEAD commit hash, or empty string.
-func getCommitHash() string {
-	out, err := exec.Command("git", "rev-parse", "HEAD").Output()
+// getCommitHash returns the git HEAD commit hash of the repository at
+// projectRoot, or empty string.
+func getCommitHash(projectRoot string) string {
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = projectRoot
+	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}

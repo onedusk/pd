@@ -21,9 +21,11 @@ func NewFallbackExecutor(level CapabilityLevel) *FallbackExecutor {
 	return &FallbackExecutor{level: level}
 }
 
-// Execute runs the fallback path for a single stage.
-func (f *FallbackExecutor) Execute(ctx context.Context, cfg Config, inputs []StageResult) (*StageResult, error) {
-	stage := inferStageFromInputs(inputs)
+// Execute runs the fallback path for the given stage.
+func (f *FallbackExecutor) Execute(ctx context.Context, cfg Config, stage Stage, inputs []StageResult) (*StageResult, error) {
+	if err := checkStageOutput(cfg, stage); err != nil {
+		return nil, err
+	}
 
 	switch f.level {
 	case CapBasic:
@@ -106,19 +108,4 @@ func (f *FallbackExecutor) executeMCPOnly(_ context.Context, cfg Config, stage S
 		FilePaths: []string{outPath},
 		Sections:  sections,
 	}, nil
-}
-
-// inferStageFromInputs determines which stage is being executed based on the
-// inputs that have already been produced.
-func inferStageFromInputs(inputs []StageResult) Stage {
-	present := make(map[Stage]bool, len(inputs))
-	for _, r := range inputs {
-		present[r.Stage] = true
-	}
-	for s := StageDevelopmentStandards; s <= StageTaskSpecifications; s++ {
-		if !present[s] {
-			return s
-		}
-	}
-	return StageTaskSpecifications
 }

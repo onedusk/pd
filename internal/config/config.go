@@ -9,13 +9,9 @@ import (
 
 // ProjectConfig holds project-level settings loaded from decompose.yml.
 type ProjectConfig struct {
-	OutputDir     string   `yaml:"outputDir,omitempty"`
-	Languages     []string `yaml:"languages,omitempty"`
-	ExcludeDirs   []string `yaml:"excludeDirs,omitempty"`
-	TemplatePath  string   `yaml:"templatePath,omitempty"`
-	Verbose       bool     `yaml:"verbose,omitempty"`
-	SingleAgent   bool     `yaml:"singleAgent,omitempty"`
-	GraphExcludes []string `yaml:"graphExcludes,omitempty"`
+	OutputDir   string `yaml:"outputDir,omitempty"`
+	Verbose     bool   `yaml:"verbose,omitempty"`
+	SingleAgent bool   `yaml:"singleAgent,omitempty"`
 }
 
 // Load attempts to read decompose.yml or decompose.yaml from the given

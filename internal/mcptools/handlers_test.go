@@ -4,6 +4,8 @@ package mcptools
 
 import (
 	"context"
+	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -173,6 +175,125 @@ func TestBuildGraph(t *testing.T) {
 		assert.Contains(t, err.Error(), "cannot access repoPath")
 	})
 
+	t.Run("reports skipped unreadable files", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root can read files regardless of permissions")
+		}
+		repo := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(repo, "ok.go"), []byte("package x\n"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(repo, "locked.go"), []byte("package x\n"), 0o000))
+
+		store := newTestStore(t)
+		parser := graph.NewTreeSitterParser()
+		defer parser.Close()
+		svc := NewCodeIntelService(store, parser)
+
+		r, w, err := os.Pipe()
+		require.NoError(t, err)
+		origStderr := os.Stderr
+		os.Stderr = w
+		_, out, err := svc.BuildGraph(context.Background(), nil, BuildGraphInput{
+			RepoPath:  repo,
+			Languages: []string{"go"},
+		})
+		os.Stderr = origStderr
+		require.NoError(t, w.Close())
+		stderr, readErr := io.ReadAll(r)
+		require.NoError(t, readErr)
+
+		require.NoError(t, err)
+		assert.Equal(t, 1, out.Stats.FileCount)
+		assert.Contains(t, string(stderr), "1 skipped")
+	})
+
+	t.Run("go import reaches every file in the package", func(t *testing.T) {
+		repo := t.TempDir()
+		writeFile := func(rel, content string) {
+			path := filepath.Join(repo, rel)
+			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+			require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+		}
+		writeFile("go.mod", "module example.com/demo\n")
+		writeFile("pkg/alpha.go", "package pkg\n\nfunc Alpha() {}\n")
+		writeFile("pkg/beta.go", "package pkg\n\nfunc Beta() {}\n")
+		writeFile("pkg/beta_test.go", "package pkg\n")
+		writeFile("cmd/main.go", "package main\n\nimport \"example.com/demo/pkg\"\n\nfunc main() { pkg.Beta() }\n")
+
+		store := newTestStore(t)
+		parser := graph.NewTreeSitterParser()
+		defer parser.Close()
+		svc := NewCodeIntelService(store, parser)
+		ctx := context.Background()
+
+		_, _, err := svc.BuildGraph(ctx, nil, BuildGraphInput{
+			RepoPath:  repo,
+			Languages: []string{"go"},
+		})
+		require.NoError(t, err)
+
+		// beta.go is not the first file by name in pkg/.
+		_, out, err := svc.AssessImpact(ctx, nil, AssessImpactInput{
+			ChangedFiles: []string{"pkg/beta.go"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"cmd/main.go"}, out.Impact.DirectlyAffected)
+
+		_, out, err = svc.AssessImpact(ctx, nil, AssessImpactInput{
+			ChangedFiles: []string{"pkg/beta_test.go"},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, out.Impact.DirectlyAffected, "an import does not point at test files")
+	})
+
+	t.Run("second build replaces the first", func(t *testing.T) {
+		repo := t.TempDir()
+		writeFile := func(rel, content string) {
+			path := filepath.Join(repo, rel)
+			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+			require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+		}
+		writeFile("go.mod", "module example.com/demo\n")
+		writeFile("pkg/alpha.go", "package pkg\n\nfunc Alpha() {}\n")
+		writeFile("pkg/beta.go", "package pkg\n\nfunc Beta() {}\n")
+		writeFile("cmd/main.go", "package main\n\nimport \"example.com/demo/pkg\"\n\nfunc main() { pkg.Beta() }\n")
+
+		store := newTestStore(t)
+		parser := graph.NewTreeSitterParser()
+		defer parser.Close()
+		svc := NewCodeIntelService(store, parser)
+		ctx := context.Background()
+		input := BuildGraphInput{RepoPath: repo, Languages: []string{"go"}}
+
+		_, first, err := svc.BuildGraph(ctx, nil, input)
+		require.NoError(t, err)
+		require.Greater(t, first.Stats.EdgeCount, 0)
+		require.Equal(t, 1, first.Stats.ClusterCount)
+
+		_, second, err := svc.BuildGraph(ctx, nil, input)
+		require.NoError(t, err)
+		assert.Equal(t, first.Stats, second.Stats, "same repo, same stats")
+
+		// A file removed between builds leaves the graph with its symbols.
+		require.NoError(t, os.Remove(filepath.Join(repo, "pkg", "alpha.go")))
+		_, third, err := svc.BuildGraph(ctx, nil, input)
+		require.NoError(t, err)
+		assert.Equal(t, first.Stats.FileCount-1, third.Stats.FileCount)
+
+		file, err := store.GetFile(ctx, "pkg/alpha.go")
+		require.NoError(t, err)
+		assert.Nil(t, file, "removed file should be gone")
+		symbols, err := store.QuerySymbols(ctx, "Alpha", 0)
+		require.NoError(t, err)
+		assert.Empty(t, symbols, "symbols of the removed file should be gone")
+
+		// A bad path is rejected before the graph is cleared.
+		_, _, err = svc.BuildGraph(ctx, nil, BuildGraphInput{RepoPath: filepath.Join(repo, "missing")})
+		require.Error(t, err)
+		stats, err := store.Stats(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, third.Stats, *stats)
+	})
+
 	t.Run("empty repoPath returns error", func(t *testing.T) {
 		store := newTestStore(t)
 		parser := graph.NewTreeSitterParser()
@@ -205,6 +326,136 @@ func TestBuildGraph(t *testing.T) {
 		require.NoError(t, err)
 		assert.Greater(t, out.Stats.FileCount, 0, "should index files with default tier-1 languages")
 	})
+
+	t.Run("skips dependency, build, and hidden folders by default", func(t *testing.T) {
+		for _, dir := range []string{"node_modules", "vendor", "target", "dist", ".cache"} {
+			t.Run(dir, func(t *testing.T) {
+				repo := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(repo, "main.go"), []byte("package x\n"), 0o644))
+				require.NoError(t, os.MkdirAll(filepath.Join(repo, dir, "pkg"), 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(repo, dir, "pkg", "dep.go"), []byte("package pkg\n"), 0o644))
+
+				store := newTestStore(t)
+				parser := graph.NewTreeSitterParser()
+				defer parser.Close()
+				svc := NewCodeIntelService(store, parser)
+
+				_, out, err := svc.BuildGraph(context.Background(), nil, BuildGraphInput{
+					RepoPath:  repo,
+					Languages: []string{"go"},
+				})
+				require.NoError(t, err)
+				assert.Equal(t, 1, out.Stats.FileCount, "files under %s must not be indexed", dir)
+			})
+		}
+	})
+
+	t.Run("skips caller-named folders as well as the defaults", func(t *testing.T) {
+		repo := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(repo, "main.go"), []byte("package x\n"), 0o644))
+		for _, dir := range []string{"generated", "node_modules"} {
+			require.NoError(t, os.MkdirAll(filepath.Join(repo, dir), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(repo, dir, "dep.go"), []byte("package dep\n"), 0o644))
+		}
+
+		store := newTestStore(t)
+		parser := graph.NewTreeSitterParser()
+		defer parser.Close()
+		svc := NewCodeIntelService(store, parser)
+
+		_, out, err := svc.BuildGraph(context.Background(), nil, BuildGraphInput{
+			RepoPath:    repo,
+			Languages:   []string{"go"},
+			ExcludeDirs: []string{"generated"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, 1, out.Stats.FileCount)
+	})
+
+	t.Run("indexes a repository whose own folder has a skipped name", func(t *testing.T) {
+		for _, dir := range []string{"dist", ".hidden"} {
+			t.Run(dir, func(t *testing.T) {
+				repo := filepath.Join(t.TempDir(), dir)
+				require.NoError(t, os.MkdirAll(repo, 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(repo, "main.go"), []byte("package x\n"), 0o644))
+
+				store := newTestStore(t)
+				parser := graph.NewTreeSitterParser()
+				defer parser.Close()
+				svc := NewCodeIntelService(store, parser)
+
+				_, out, err := svc.BuildGraph(context.Background(), nil, BuildGraphInput{
+					RepoPath:  repo,
+					Languages: []string{"go"},
+				})
+				require.NoError(t, err)
+				assert.Equal(t, 1, out.Stats.FileCount)
+			})
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// TestPersistGraph
+// ---------------------------------------------------------------------------
+
+// limitRecordingStore records the limit persistGraph passes to QuerySymbols.
+type limitRecordingStore struct {
+	graph.Store
+	limit int
+}
+
+func (s *limitRecordingStore) QuerySymbols(ctx context.Context, query string, limit int) ([]graph.SymbolNode, error) {
+	s.limit = limit
+	return s.Store.QuerySymbols(ctx, query, limit)
+}
+
+func TestPersistGraph(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+	seedSymbols(t, store)
+
+	files := []graph.FileNode{
+		{Path: "pkg/handler.go", Language: graph.LangGo, LOC: 100},
+		{Path: "pkg/service.go", Language: graph.LangGo, LOC: 80},
+		{Path: "pkg/model.go", Language: graph.LangGo, LOC: 50},
+	}
+	edges := []graph.Edge{
+		{SourceID: "pkg/handler.go", TargetID: "pkg/service.go", Kind: graph.EdgeKindImports},
+		// CALLS as the extractors emit it: file path to callee name.
+		{SourceID: "pkg/handler.go", TargetID: "fmt.Sprintf", Kind: graph.EdgeKindCalls},
+		{SourceID: "pkg/service.go", TargetID: "validateUser", Kind: graph.EdgeKindCalls},
+	}
+	for _, e := range edges {
+		require.NoError(t, store.AddEdge(ctx, e))
+	}
+
+	src := &limitRecordingStore{Store: store, limit: -1}
+	persistPath := filepath.Join(t.TempDir(), "graph")
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	origStderr := os.Stderr
+	os.Stderr = w
+	persistErr := persistGraph(ctx, src, persistPath, files)
+	os.Stderr = origStderr
+	require.NoError(t, w.Close())
+	stderr, readErr := io.ReadAll(r)
+	require.NoError(t, readErr)
+	require.NoError(t, persistErr)
+
+	assert.Equal(t, 0, src.limit, "symbols should be read with no limit")
+	assert.Contains(t, string(stderr), "0 clusters and 0 edges that could not be stored")
+	assert.Contains(t, string(stderr), "2 CALLS edges", "skipped CALLS edges should be reported")
+
+	disk, err := graph.NewKuzuFileStore(persistPath)
+	require.NoError(t, err)
+	defer disk.Close()
+	stats, err := disk.Stats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 3, stats.FileCount)
+	assert.Equal(t, 6, stats.SymbolCount, "every symbol should be persisted")
+	assert.Equal(t, 1, stats.EdgeCount, "only the IMPORTS edge is persisted")
 }
 
 // ---------------------------------------------------------------------------
@@ -586,4 +837,44 @@ func TestGetClusters(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, out.Clusters, "empty store should return no clusters")
 	})
+}
+
+// TestPersistGraph_ReportsUnmatchedEdges checks that an edge whose endpoints
+// match no stored node is counted in the warning. The Kuzu insert matches
+// nothing for it and returns no error, as with the Rust IMPLEMENTS edges
+// (type name to trait name).
+func TestPersistGraph_ReportsUnmatchedEdges(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+
+	files := []graph.FileNode{
+		{Path: "src/a.rs", Language: graph.LangRust, LOC: 10},
+		{Path: "src/b.rs", Language: graph.LangRust, LOC: 10},
+	}
+	for _, f := range files {
+		require.NoError(t, store.AddFile(ctx, f))
+	}
+	edges := []graph.Edge{
+		{SourceID: "src/a.rs", TargetID: "src/b.rs", Kind: graph.EdgeKindImports},
+		{SourceID: "Circle", TargetID: "Shape", Kind: graph.EdgeKindImplements},
+		{SourceID: "Square", TargetID: "Shape", Kind: graph.EdgeKindImplements},
+	}
+	for _, e := range edges {
+		require.NoError(t, store.AddEdge(ctx, e))
+	}
+
+	persistPath := filepath.Join(t.TempDir(), "graph")
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	origStderr := os.Stderr
+	os.Stderr = w
+	persistErr := persistGraph(ctx, store, persistPath, files)
+	os.Stderr = origStderr
+	require.NoError(t, w.Close())
+	stderr, readErr := io.ReadAll(r)
+	require.NoError(t, readErr)
+	require.NoError(t, persistErr)
+
+	assert.Contains(t, string(stderr), "2 edges whose endpoints matched no stored node")
 }

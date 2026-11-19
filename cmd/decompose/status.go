@@ -14,6 +14,9 @@ func runStatus(projectRoot string, name string) error {
 }
 
 func printSingleStatus(projectRoot, name string) error {
+	if err := status.CheckExists(projectRoot, name); err != nil {
+		return err
+	}
 	ds := status.GetDecompositionStatus(projectRoot, name)
 	fmt.Printf("Decomposition: %s\n\n", ds.Name)
 	printStageTable(ds)

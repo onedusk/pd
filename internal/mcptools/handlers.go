@@ -76,6 +76,12 @@ func (s *CodeIntelService) BuildGraph(
 		excludeSet[d] = true
 	}
 
+	// Start from an empty graph so a rebuild in the same session does not
+	// add to the previous one or keep files that no longer exist.
+	if r, ok := s.store.(interface{ Reset() }); ok {
+		r.Reset()
+	}
+
 	if err := s.store.InitSchema(ctx); err != nil {
 		return nil, BuildGraphOutput{}, fmt.Errorf("init schema: %w", err)
 	}
@@ -86,15 +92,22 @@ func (s *CodeIntelService) BuildGraph(
 		lang   graph.Language
 	}
 	var entries []parseEntry
+	skipped := 0
 
 	fmt.Fprintf(os.Stderr, "Scanning files...\n")
 	walkErr := filepath.WalkDir(input.RepoPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			skipped++
 			return nil // skip inaccessible paths
 		}
 		if d.IsDir() {
 			name := d.Name()
 			if name == ".git" || excludeSet[name] {
+				return filepath.SkipDir
+			}
+			// Skip dependency, build output, and hidden folders by default.
+			// The repository root is walked whatever it is called.
+			if path != input.RepoPath && (strings.HasPrefix(name, ".") || name == "node_modules" || name == "vendor" || name == "target" || name == "dist") {
 				return filepath.SkipDir
 			}
 			return nil
@@ -108,6 +121,7 @@ func (s *CodeIntelService) BuildGraph(
 
 		source, err := os.ReadFile(path)
 		if err != nil {
+			skipped++
 			return nil // skip unreadable files
 		}
 
@@ -118,6 +132,7 @@ func (s *CodeIntelService) BuildGraph(
 
 		result, err := s.parser.Parse(ctx, relPath, source, lang)
 		if err != nil {
+			skipped++
 			return nil // skip unparseable files
 		}
 
@@ -127,7 +142,11 @@ func (s *CodeIntelService) BuildGraph(
 	if walkErr != nil {
 		return nil, BuildGraphOutput{}, fmt.Errorf("walk: %w", walkErr)
 	}
-	fmt.Fprintf(os.Stderr, "Parsed %d files\n", len(entries))
+	if skipped > 0 {
+		fmt.Fprintf(os.Stderr, "Parsed %d files (%d skipped: inaccessible, unreadable, or failed to parse)\n", len(entries), skipped)
+	} else {
+		fmt.Fprintf(os.Stderr, "Parsed %d files\n", len(entries))
+	}
 
 	// Pass 2: store all files first (needed for KuzuDB MATCH on IMPORTS edges).
 	var files []graph.FileNode
@@ -209,7 +228,8 @@ func persistGraph(ctx context.Context, src graph.Store, persistPath string, file
 		}
 	}
 
-	symbols, err := src.QuerySymbols(ctx, "", 100000)
+	// A limit of zero means no limit, so every symbol is copied.
+	symbols, err := src.QuerySymbols(ctx, "", 0)
 	if err != nil {
 		return fmt.Errorf("query symbols: %w", err)
 	}
@@ -223,22 +243,46 @@ func persistGraph(ctx context.Context, src graph.Store, persistPath string, file
 	if err != nil {
 		return fmt.Errorf("get clusters: %w", err)
 	}
+	skippedClusters := 0
 	for _, c := range clusters {
 		if err := dst.AddCluster(ctx, c); err != nil {
-			continue // skip duplicate cluster names
+			skippedClusters++ // skip duplicate cluster names
 		}
 	}
 
-	// Copy all edges (IMPORTS, CALLS, DEFINES, INHERITS, IMPLEMENTS, BELONGS_TO).
+	// Copy edges (IMPORTS, DEFINES, INHERITS, IMPLEMENTS, BELONGS_TO). CALLS
+	// edges are left out on purpose: the extractors store them as file path to
+	// callee name, and the Kuzu CALLS table links two Symbol ids, so none of
+	// them would match.
 	edges, err := src.GetAllEdges(ctx)
 	if err != nil {
 		return fmt.Errorf("get edges: %w", err)
 	}
+	skippedEdges := 0
+	skippedCalls := 0
+	sentEdges := 0
 	for _, e := range edges {
-		if err := dst.AddEdge(ctx, e); err != nil {
-			// Skip edges that reference missing nodes (e.g., filtered files).
+		if e.Kind == graph.EdgeKindCalls {
+			skippedCalls++
 			continue
 		}
+		if err := dst.AddEdge(ctx, e); err != nil {
+			// Skip edges that reference missing nodes (e.g., filtered files).
+			skippedEdges++
+			continue
+		}
+		sentEdges++
+	}
+
+	// An insert whose endpoints match no stored node creates nothing and
+	// returns no error (Rust IMPLEMENTS edges are type name to trait name),
+	// so compare what was sent with what the saved graph holds.
+	unmatchedEdges := 0
+	if stats, err := dst.Stats(ctx); err == nil && stats.EdgeCount < sentEdges {
+		unmatchedEdges = sentEdges - stats.EdgeCount
+	}
+	if skippedClusters > 0 || skippedEdges > 0 || skippedCalls > 0 || unmatchedEdges > 0 {
+		fmt.Fprintf(os.Stderr, "warning: persisted graph omits %d clusters and %d edges that could not be stored, %d CALLS edges that are not persisted, and %d edges whose endpoints matched no stored node\n", skippedClusters, skippedEdges, skippedCalls, unmatchedEdges)
 	}
 
 	return nil

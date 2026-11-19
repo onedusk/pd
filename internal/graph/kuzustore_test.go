@@ -170,10 +170,10 @@ func TestKuzuStore_AddEdge_Defines(t *testing.T) {
 		FilePath: "main.go", StartLine: 1, EndLine: 10,
 	}))
 
-	// DEFINES edge: File -> Symbol. TargetID must be "filePath:name".
+	// DEFINES edge: File -> Symbol. TargetID must be "filePath:name:startLine".
 	edge := Edge{
 		SourceID: "main.go",
-		TargetID: "main.go:main",
+		TargetID: "main.go:main:1",
 		Kind:     EdgeKindDefines,
 	}
 	require.NoError(t, s.AddEdge(ctx, edge))
@@ -198,10 +198,10 @@ func TestKuzuStore_AddEdge_Calls(t *testing.T) {
 		FilePath: "b.go", StartLine: 1, EndLine: 5,
 	}))
 
-	// CALLS edge: Symbol -> Symbol. Both IDs use "filePath:name".
+	// CALLS edge: Symbol -> Symbol. Both IDs use "filePath:name:startLine".
 	edge := Edge{
-		SourceID: "a.go:caller",
-		TargetID: "b.go:callee",
+		SourceID: "a.go:caller:1",
+		TargetID: "b.go:callee:1",
 		Kind:     EdgeKindCalls,
 	}
 	require.NoError(t, s.AddEdge(ctx, edge))
@@ -418,8 +418,8 @@ func TestKuzuStore_Stats(t *testing.T) {
 
 	// Edges.
 	require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "x.go", TargetID: "y.go", Kind: EdgeKindImports}))
-	require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "x.go", TargetID: "x.go:Foo", Kind: EdgeKindDefines}))
-	require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "y.go", TargetID: "y.go:Bar", Kind: EdgeKindDefines}))
+	require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "x.go", TargetID: "x.go:Foo:1", Kind: EdgeKindDefines}))
+	require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "y.go", TargetID: "y.go:Bar:1", Kind: EdgeKindDefines}))
 
 	stats, err = s.Stats(ctx)
 	require.NoError(t, err)
@@ -633,6 +633,103 @@ func TestAssessImpact_MemAndKuzuAgree(t *testing.T) {
 	}
 }
 
+// TestGetDependencies_MemAndKuzuAgree guards against the two Store
+// implementations drifting apart on which edge kinds traversal follows. The
+// graph mixes IMPORTS with the CALLS, DEFINES, and BELONGS edges build_graph
+// stores; only IMPORTS may be followed.
+func TestGetDependencies_MemAndKuzuAgree(t *testing.T) {
+	ctx := context.Background()
+	kuzu := newTestStore(t)
+	mem := NewMemStore()
+
+	for _, s := range []Store{kuzu, mem} {
+		for _, p := range []string{"a.go", "b.go", "c.go"} {
+			require.NoError(t, s.AddFile(ctx, FileNode{Path: p, Language: LangGo, LOC: 10}))
+		}
+		require.NoError(t, s.AddSymbol(ctx, SymbolNode{Name: "Run", Kind: SymbolKindFunction, Exported: true, FilePath: "a.go", StartLine: 3, EndLine: 5}))
+		require.NoError(t, s.AddCluster(ctx, ClusterNode{Name: "pkg/", CohesionScore: 1, Members: []string{"a.go", "b.go"}}))
+
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "b.go", Kind: EdgeKindImports}))
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "b.go", TargetID: "c.go", Kind: EdgeKindImports}))
+		// CALLS as the extractors emit it: file path to callee name.
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "fmt.Sprintf", Kind: EdgeKindCalls}))
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "c.go", TargetID: "fmt.Sprintf", Kind: EdgeKindCalls}))
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "a.go:Run:3", Kind: EdgeKindDefines}))
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "a.go", TargetID: "pkg/", Kind: EdgeKindBelongs}))
+		require.NoError(t, s.AddEdge(ctx, Edge{SourceID: "b.go", TargetID: "pkg/", Kind: EdgeKindBelongs}))
+	}
+
+	for _, id := range []string{"a.go", "b.go", "c.go", "fmt.Sprintf", "pkg/", "a.go:Run:3"} {
+		for _, dir := range []Direction{DirectionDownstream, DirectionUpstream} {
+			kc, err := kuzu.GetDependencies(ctx, id, dir, 5)
+			require.NoError(t, err)
+			mc, err := mem.GetDependencies(ctx, id, dir, 5)
+			require.NoError(t, err)
+			assert.Equal(t, chainEnds(kc), chainEnds(mc), "node=%s direction=%s", id, dir)
+		}
+	}
+}
+
+// TestQuerySymbols_ZeroLimit_MemAndKuzuReturnAll checks that both stores read
+// a limit of zero as "no limit", which persistGraph relies on to copy every
+// symbol.
+func TestQuerySymbols_ZeroLimit_MemAndKuzuReturnAll(t *testing.T) {
+	ctx := context.Background()
+
+	for name, store := range map[string]Store{"mem": NewMemStore(), "kuzu": newTestStore(t)} {
+		for _, n := range []string{"Alpha", "Beta", "Gamma"} {
+			require.NoError(t, store.AddSymbol(ctx, SymbolNode{Name: n, Kind: SymbolKindFunction, Exported: true, FilePath: "a.go", StartLine: 1, EndLine: 2}), name)
+		}
+
+		all, err := store.QuerySymbols(ctx, "", 0)
+		require.NoError(t, err, name)
+		assert.Len(t, all, 3, name)
+
+		limited, err := store.QuerySymbols(ctx, "", 2)
+		require.NoError(t, err, name)
+		assert.Len(t, limited, 2, name)
+	}
+}
+
+// TestSameNamedSymbols_MemAndKuzuKeepAll checks that both stores keep every
+// symbol when one file defines the same name more than once (methods on
+// different receivers), and that GetSymbol returns the first by start line.
+func TestSameNamedSymbols_MemAndKuzuKeepAll(t *testing.T) {
+	ctx := context.Background()
+
+	// Added out of line order so "first" cannot mean insertion order.
+	symbols := []SymbolNode{
+		{Name: "RequestReview", Kind: SymbolKindMethod, Exported: true, FilePath: "review.go", StartLine: 109, EndLine: 150},
+		{Name: "RequestReview", Kind: SymbolKindMethod, Exported: true, FilePath: "review.go", StartLine: 55, EndLine: 90},
+		{Name: "RequestReview", Kind: SymbolKindMethod, Exported: true, FilePath: "review.go", StartLine: 211, EndLine: 240},
+	}
+
+	for name, store := range map[string]Store{"mem": NewMemStore(), "kuzu": newTestStore(t)} {
+		for _, sym := range symbols {
+			require.NoError(t, store.AddSymbol(ctx, sym), name)
+		}
+
+		results, err := store.QuerySymbols(ctx, "RequestReview", 10)
+		require.NoError(t, err, name)
+		lines := make([]int, len(results))
+		for i, r := range results {
+			assert.Equal(t, "RequestReview", r.Name, name)
+			lines[i] = r.StartLine
+		}
+		sort.Ints(lines)
+		assert.Equal(t, []int{55, 109, 211}, lines, name)
+
+		stats, err := store.Stats(ctx)
+		require.NoError(t, err, name)
+		assert.Equal(t, 3, stats.SymbolCount, name)
+
+		got, err := store.GetSymbol(ctx, "review.go", "RequestReview")
+		require.NoError(t, err, name)
+		require.NotNil(t, got, name)
+		assert.Equal(t, 55, got.StartLine, name)
+	}
+}
+
 func TestKuzuStore_EdgeKindInherits(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -647,8 +744,8 @@ func TestKuzuStore_EdgeKindInherits(t *testing.T) {
 	}))
 
 	edge := Edge{
-		SourceID: "derived.py:Derived",
-		TargetID: "base.py:Base",
+		SourceID: "derived.py:Derived:1",
+		TargetID: "base.py:Base:1",
 		Kind:     EdgeKindInherits,
 	}
 	require.NoError(t, s.AddEdge(ctx, edge))
@@ -672,8 +769,8 @@ func TestKuzuStore_EdgeKindImplements(t *testing.T) {
 	}))
 
 	edge := Edge{
-		SourceID: "kuzustore.go:KuzuStore",
-		TargetID: "store.go:Store",
+		SourceID: "kuzustore.go:KuzuStore:1",
+		TargetID: "store.go:Store:1",
 		Kind:     EdgeKindImplements,
 	}
 	require.NoError(t, s.AddEdge(ctx, edge))

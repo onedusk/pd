@@ -10,7 +10,7 @@ import "github.com/onedusk/pd/internal/graph"
 type BuildGraphInput struct {
 	RepoPath    string   `json:"repoPath" jsonschema:"the absolute path to the repository to index"`
 	Languages   []string `json:"languages,omitempty" jsonschema:"languages to index (default: tier-1). Values: go, typescript, python, rust"`
-	ExcludeDirs []string `json:"excludeDirs,omitempty" jsonschema:"directories to exclude from indexing (e.g. vendor, node_modules)"`
+	ExcludeDirs []string `json:"excludeDirs,omitempty" jsonschema:"extra directory names to exclude from indexing (node_modules, vendor, target, dist, and dot-folders are always skipped)"`
 }
 
 // BuildGraphOutput is the result of the build_graph MCP tool.
