@@ -43,9 +43,11 @@ func (ia *ImplementerAgent) ImplementMilestone(ctx context.Context, milestone *o
 	prompt := ia.composePrompt(string(taskSpec))
 
 	// Spawn Claude Code session. The prompt goes on stdin: one command-line
-	// argument is capped at 128 KB on Linux.
+	// argument is capped at 128 KB on Linux. Nobody can answer a permission
+	// prompt in a --print session, so auto mode decides each tool call.
 	cmd := exec.CommandContext(ctx, "claude",
 		"--print",
+		"--permission-mode", "auto",
 		"--max-turns", "50",
 	)
 	cmd.Dir = ia.projectRoot

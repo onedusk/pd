@@ -123,6 +123,8 @@ decompose --project-root /path/to/project --serve-mcp
 | `--verbose` | `false` | Enable verbose output |
 | `--version` | | Print version and exit |
 
+`decompose implement` starts each session with `claude --print --permission-mode auto`, so the session edits files and runs commands without asking. This needs a Claude Code version and account where auto mode is available.
+
 ### Capability Levels
 
 The binary auto-detects available infrastructure and selects the highest capability level:

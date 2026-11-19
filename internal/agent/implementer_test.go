@@ -63,5 +63,5 @@ func TestImplementMilestone_SendsPromptOnStdin(t *testing.T) {
 	argsData, err := os.ReadFile(filepath.Join(outDir, "args"))
 	require.NoError(t, err)
 	args := strings.Split(strings.TrimSpace(string(argsData)), "\n")
-	assert.Equal(t, []string{"--print", "--max-turns", "50"}, args)
+	assert.Equal(t, []string{"--print", "--permission-mode", "auto", "--max-turns", "50"}, args)
 }
